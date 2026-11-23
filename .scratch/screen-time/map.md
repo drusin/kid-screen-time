@@ -33,12 +33,17 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 
 <!-- eine Zeile pro geschlossenem Ticket -->
 
+- [Wie klingelt ein Alarm auf Samsung-Android zuverlässig im Hintergrund und Standby?](issues/01-alarm-zuverlaessig-android.md): nur nativ, Kotlin-Alarmkern mit `setAlarmClock` + `USE_EXACT_ALARM` + Alarm-Stream. Eine PWA scheidet fürs Kindgerät aus, die UI kann trotzdem Capacitor/Vue sein
+- [Wie erreichen Server-Ereignisse kostenlos die Android-Geräte?](issues/02-push-ohne-kosten.md): self-hosted ntfy + UnifiedPush als „resync“-Signal, FCM als Plan B
+- [Wie kommen APK und Updates ohne Play Store auf die Geräte?](issues/03-apk-verteilung-updates.md): GitHub Releases + Obtainium, kostenloses „limited distribution“-Konto für Googles Entwicklerverifizierung ab 2027, ein Release-Keystore
+
 ## Not yet specified
 
 - **Deployment im Homelab**: Compose-Setup, Subdomain/Reverse-Proxy-Anbindung, Backups der Daten. Hängt von der Backend-Wahl ab.
 - **Build & Release**: Wie wird die APK gebaut (lokal vs. GitHub Actions), und wie wird sie signiert? Hängt vom Stack und vom Update-Weg ab.
 - **Synchronisation während einer laufenden Sitzung**: Was passiert genau, wenn die Eltern das Kontingent ändern, während der Timer läuft, oder das Tablet die Verbindung verliert? Protokoll und Mechanismus hängen von Push-Recherche und Architektur ab.
 - **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Erst relevant, wenn Datenmodell und UI stehen.
+- **Lebenszeichen des Kindgeräts**: Der Server merkt, wenn das Kindgerät sich nicht mehr meldet (deinstalliert, ausgeschaltet), und benachrichtigt die Eltern? Ob und wie, ist noch unscharf.
 - **Teststrategie**: Insbesondere, wie man das Alarmverhalten (Standby, Doze) verifiziert.
 
 ## Out of scope
