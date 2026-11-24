@@ -23,12 +23,19 @@ _Avoid_: Tagesausnahme (ersetzt nichts, sondern verändert)
 
 **Automatischer Stopp**: Das Ende einer Sitzung ohne Zutun des Kindes, wenn die Überziehung eine von den Eltern einstellbare Grenze erreicht (Standard: 60 Minuten). Die Eltern werden benachrichtigt.
 
-**Kindgerät**: Das gekoppelte Gerät des Kindes (Tablet). Hier wird die Sitzung gestartet und gestoppt, die Restzeit angezeigt und der Alarm abgespielt.
+**Kindgerät**: Das gekoppelte Gerät des Kindes (Tablet). Jedes Kind hat genau ein Kindgerät. Wird ein neues gekoppelt, wird das alte entkoppelt, und eine laufende Sitzung läuft am neuen Gerät weiter. Hier wird die Sitzung gestartet und gestoppt, die Restzeit angezeigt und der Alarm abgespielt.
 
 **Elterngerät**: Ein gekoppeltes Gerät der Eltern. Hier werden Kontingente bearbeitet und der Verlauf angesehen, und hier kommt die Benachrichtigung beim Alarm an.
 
 **Vorwarnung**: Ein kurzer Ton am Kindgerät, einmal pro Sitzung, wenn die Restzeit eine einstellbare Schwelle erreicht oder schon darunter liegt (Standard: 5 Minuten).
 
 **Alarm**: Klingeln am Kindgerät, wenn die Restzeit 0 erreicht. Es wiederholt sich alle 5 Minuten, solange die Sitzung läuft und die Restzeit nicht wieder über 0 steigt. Gesperrt wird nichts. Die Eltern bekommen zusätzlich eine Benachrichtigung.
+
+**Kopplung**: Das Verbinden eines Geräts mit dem Server. Dabei wird festgelegt, ob es ein Kindgerät (für welches Kind) oder ein Elterngerät ist. Die Rolle eines Geräts ändert sich danach nicht mehr.
+
+**Kopplungscode**: Ein einmaliger, 10 Minuten gültiger Code (als QR-Code oder zum Abtippen), mit dem ein Gerät gekoppelt wird. Ein Elterngerät erzeugt ihn. Den ersten Code (und den nach Verlust aller Elterngeräte) erzeugen die Eltern direkt am Server im Heimnetz.
+
+**Entkoppeln**: Ein Elterngerät entzieht einem Gerät dauerhaft den Zugang. Das letzte Elterngerät kann nicht entkoppelt werden.
+_Avoid_: Löschen, Abmelden
 
 **Verlauf**: Die Liste vergangener Sitzungen und Tagesverbräuche.
