@@ -42,3 +42,9 @@ Umgebungsvariablen. Fehlt eine Pflichtvariable, startet der Server nicht.
 Erstes Elterngerät koppeln: `http://<Server>:<ADMIN_PORT>/admin` im Heimnetz öffnen, Passwort eingeben, den Code samt Server-URL in der App unter „Gerät koppeln“ eintragen. Weitere Geräte koppelt ein Elterngerät über „Gerät koppeln“ (Rolle wählen, ggf. Namen des Kindes eingeben): Es zeigt einen QR-Code mit Server-URL und den Code zum Abtippen, 10 Minuten gültig. Das neue Gerät scannt den QR-Code (Google Code Scanner, braucht Google Play-Dienste) oder tippt Server-URL und Code ein.
 
 CI: `.github/workflows/ci.yml` läuft bei Push auf `main` und bei Pull Requests und führt `./gradlew build` aus.
+
+## Release
+
+Ein gepushter Tag `vX.Y.Z` startet `.github/workflows/release.yml`: zuerst dasselbe Gate wie die CI (`ci.yml` als wiederverwendbarer Workflow), danach signierte APK, GitHub Release mit APK und automatischen Notes, Server-Image `ghcr.io/drusin/kid-screen-time-server:X.Y.Z` (`Dockerfile`, `linux/amd64`, kein `latest`). `versionName` = `X.Y.Z`, `versionCode = X*10000 + Y*100 + Z`, lokal ohne Tag `0.0.0-dev`. Die Version kommt aus Env `RELEASE_TAG` oder `-PreleaseTag`; die Signatur nur aus den Env-Variablen `RELEASE_KEYSTORE_FILE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` (ohne sie bleibt die Release-APK unsigniert). Einrichtung und Ablauf für den Nutzer: [docs/release-checkliste.md](docs/release-checkliste.md).
+
+Server-Image lokal: `./gradlew :server:shadowJar && docker build -t kid-screen-time-server .`

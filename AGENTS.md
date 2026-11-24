@@ -53,3 +53,8 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 - Einstieg ist `KindStand(...).tagesstand(jetzt)` im Paket `domain.bildschirmzeit`. Die Zeit wird als `Instant` übergeben, `domain` liest nie selbst eine Uhr. Erweiterungen (fällige Zeitpunkte, Mitternacht, Verlauf) kommen als weitere Funktionen auf `KindStand`/`Tagesstand`, nicht als zweite Rechenlogik.
 - `restzeit` und `ueberziehung` sind nie negativ. Details und Entscheidungen: Ticket 02, „Notizen zur Umsetzung“.
 - Tests dafür nutzen `ManualClock` und gehen nur über `tagesstand`.
+
+## Release
+
+- Version und Signatur der App stehen in `app/build.gradle.kts` (Env `RELEASE_TAG`/`-PreleaseTag`, `RELEASE_KEYSTORE_*`). Keystore nie im Repo. Ohne Env baut alles unsigniert weiter; `./gradlew build` darf davon nie abhängen.
+- `release.yml` ruft `ci.yml` per `workflow_call` als Gate auf; Änderungen am Gate gehören nur in `ci.yml`. Das `Dockerfile` packt das fertige Fat-JAR (`:server:shadowJar` vorher ausführen).
