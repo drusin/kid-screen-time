@@ -46,6 +46,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md): eigener Stack-Ordner in `~/docker` hinter Traefik (`kidscreentime.rusin.xyz`, `ntfy.rusin.xyz`), `/admin` auf eigenem Host-Port ohne Traefik-Route, ntfy von außen nur lesend, Config per Compose + `.env`, Image auf GHCR beim Release-Tag, Updates manuell (Server vor App)
 - [Was muss v1 für mehrere Kinder können?](issues/12-mehrere-kinder.md): Datenmodell und API mehrkindfähig, Eltern-UI in v1 für ein Kind, Regeln pro Kind und Zeitzone pro Familie, Kind wird beim ersten Kopplungscode fürs Kindgerät mit Namen angelegt, Name vorne in jeder Eltern-Benachrichtigung
 - [Merkt der Server, wenn das Kindgerät verstummt, und wie erfahren es die Eltern?](issues/13-lebenszeichen-kindgeraet.md): kein eigenes Lebenszeichen, „zuletzt gesehen“ nur aus normalen Syncs, Kindgerät meldet fehlende Checklisten-Punkte bei jedem Sync, einmalige Eltern-Benachrichtigung pro Übergang zu „etwas fehlt“ plus rote Anzeige
+- [Wie wird getestet, insbesondere das Alarmverhalten?](issues/14-teststrategie.md): alle Ebenen automatisch im JVM-Gate (`domain`, Server mit echter SQLite, Sync-Szenarien, Robolectric für die Alarmplanung), injizierte Uhr als Pflicht, Alarm und Push-Weg per manueller Checkliste am echten Samsung-Tablet nur bei relevanten Änderungen, keine instrumentierten Tests
 
 ## Not yet specified
 
