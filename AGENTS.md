@@ -40,6 +40,13 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 - Fehlversuche (Code, Passwort) laufen über den einen `FailureRateLimiter`. Admin-Routen nur in `AdminRoutes.kt` (Admin-Port), API nur in `ApiRoutes.kt` (öffentlicher Port).
 - Umlaute in Testnamen: Gradle braucht `LC_ALL=C.UTF-8` (in der Sandbox persistent gesetzt).
 
+## Push (ntfy, Ticket 13)
+
+- Server: `PushService` (`signalChild(childId)`, `signalParents()`, optional `PushSignal(title, text)`) verschlüsselt je Gerät mit `WebPushEncryption` (RFC 8291, eigene JCA-Umsetzung, Test gegen das RFC-Beispiel) und postet an `NTFY_INTERNAL_URL` + Topic des Endpoints. Läuft über einen Hintergrund-Thread, scheitert still (Signal trägt keinen Stand), `410`/`404` löscht die Registrierung. Neue Signale nur dort aufrufen, nie aus der Transaktion heraus und nach der Antwort (siehe `ApiRoutes`, Sync). Offen für spätere Tickets: Eltern-Aktionen rufen `signalChild`, Automatischer Stopp `signalChild` + `signalParents`, Checkliste `signalParents`.
+- Registrierung: `POST ApiPaths.PUSH_REGISTRATION` (beide Rollen, `authenticatedPost(path, services, setOf(...))`) oder `push` beim Koppeln. Endpoint muss `<NTFY_PUBLIC_URL>/up…` sein (SSRF-Schutz), Schlüssel werden geprüft.
+- Tests: `FakeNtfy` (Test-Fixture von `server`, echter HTTP-Endpunkt) plus `TestServer(dir, ntfyInternalUrl = ntfy.url)`; `server.services.push.flush()` wartet auf den Hintergrund-Thread. `WebPushReceiver` (server-Tests) entschlüsselt wie das Gerät.
+- App: `ResyncPushService` (UnifiedPush-Connector 3.x, entschlüsselt selbst; nur `message.decrypted == true` zählt) → `PushHandler` (Kind: `ChildRepository.sync()`, Eltern: `signals`-Flow, `ParentHomeViewModel` lädt neu) und `PushRepository` (Registrierung zum Server, Dedupe über `PushStorage`). `PushSetup.register(activity)` läuft in `MainActivity`, sobald gekoppelt. Robolectric-Tests: `Robolectric.setupService` auf dem Test-Thread vor `syncScenario`, Container per `KidScreenTimeApp.injectContainerForTest`.
+
 ## App-Muster
 
 - DI: `AppContainer` (manuell) hält HTTP-Client, `PairingRepository` und `ParentRepository`; `KidScreenTimeApp.container` ist die einzige Instanz. Neue Repositories dort eintragen.

@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.parent.ParentRepository
 import io.github.drusin.kidscreentime.parent.SnapshotResult
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -24,12 +26,17 @@ data class ParentHomeUiState(
 }
 
 /** The Eltern-Startseite. Variante B ("Ein Bildschirm") grows here in later tickets. */
-class ParentHomeViewModel(private val repository: ParentRepository) : ViewModel() {
+class ParentHomeViewModel(
+    private val repository: ParentRepository,
+    /** Fires when a push signal arrived (Resync-Signal): the Eltern-Snapshot is loaded again. */
+    resyncs: Flow<*> = emptyFlow<Unit>(),
+) : ViewModel() {
     private val _state = MutableStateFlow(ParentHomeUiState())
     val state: StateFlow<ParentHomeUiState> = _state.asStateFlow()
 
     init {
         refresh()
+        viewModelScope.launch { resyncs.collect { refresh() } }
     }
 
     fun refresh() {

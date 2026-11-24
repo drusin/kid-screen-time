@@ -39,13 +39,18 @@ import java.time.ZoneId
  * folder to simulate a restart (same database file). The timed events do not run on their own here: after
  * moving the clock call `services.scheduler.runDue()` (what the loop of the real server does when a time is due).
  */
-class TestServer(dir: Path, val clock: ManualClock = ManualClock()) {
+class TestServer(
+    dir: Path,
+    val clock: ManualClock = ManualClock(),
+    /** Where the server publishes pushes; tests point it at a fake HTTP endpoint instead of ntfy. */
+    ntfyInternalUrl: String = "http://ntfy:80",
+) {
     val config = ServerConfig(
         adminPassword = ADMIN_PASSWORD,
         familyZone = ZoneId.of("Europe/Berlin"),
         publicServerUrl = "https://kst.example.org",
         ntfyPublicUrl = "https://ntfy.example.org",
-        ntfyInternalUrl = "http://ntfy:80",
+        ntfyInternalUrl = ntfyInternalUrl,
         databasePath = dir.resolve("kid-screen-time.db"),
         port = PUBLIC_PORT,
         adminPort = ADMIN_PORT,

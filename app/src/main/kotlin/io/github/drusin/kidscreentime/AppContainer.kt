@@ -21,10 +21,16 @@ import io.github.drusin.kidscreentime.pairing.PairingRepository
 import io.github.drusin.kidscreentime.pairing.PairingStorage
 import io.github.drusin.kidscreentime.pairing.TokenStore
 import io.github.drusin.kidscreentime.parent.ParentRepository
+import io.github.drusin.kidscreentime.push.PushHandler
+import io.github.drusin.kidscreentime.push.PushRepository
+import io.github.drusin.kidscreentime.push.PushStorage
 import io.github.drusin.kidscreentime.qr.GmsQrScanner
 import io.github.drusin.kidscreentime.qr.QrScanner
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Manual dependency injection (no Hilt): the one place that wires the app. Created once by [KidScreenTimeApp], which also starts [AlarmKern.observe].
@@ -50,6 +56,11 @@ class AppContainer(
     val pairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context))
     val parentRepository = ParentRepository(httpClient, pairingRepository)
     val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock)
+    val pushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
+    val pushHandler = PushHandler(pairingRepository, childRepository)
+
+    /** For work that outlives a screen, e.g. what a push message triggers. Lives as long as the process. */
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val alarmKern = AlarmKern(
         childRepository,

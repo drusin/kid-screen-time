@@ -29,9 +29,15 @@ class ServerServices(
     val automaticStops: AutomaticStopEvents,
     val scheduler: EventScheduler,
     val rateLimiter: FailureRateLimiter,
+    val push: PushService,
 ) {
     companion object {
-        fun create(config: ServerConfig, wallClock: WallClock, monotonicClock: MonotonicClock): ServerServices {
+        fun create(
+            config: ServerConfig,
+            wallClock: WallClock,
+            monotonicClock: MonotonicClock,
+            publisher: PushPublisher = HttpPushPublisher(),
+        ): ServerServices {
             val database = Database.open(config.databasePath)
             val children = ChildService(database, wallClock, config.familyZone)
             val automaticStops = AutomaticStopEvents(children)
@@ -48,6 +54,7 @@ class ServerServices(
                 automaticStops = automaticStops,
                 scheduler = scheduler,
                 rateLimiter = FailureRateLimiter(monotonicClock),
+                push = PushService(database, config, publisher),
             )
         }
     }
@@ -76,7 +83,10 @@ fun Application.serverModule(
     // The scheduler loop ends with the application. Tests pass false and call `services.scheduler.runDue()` after moving the clock.
     val schedulerJob = if (runScheduler) launch(Dispatchers.IO) { services.scheduler.run() } else null
     monitor.subscribe(ApplicationStopping) { schedulerJob?.cancel() }
-    monitor.subscribe(ApplicationStopped) { services.database.close() }
+    monitor.subscribe(ApplicationStopped) {
+        services.push.close()
+        services.database.close()
+    }
     routing {
         port(config.port) {
             get(ApiPaths.HEALTH) {

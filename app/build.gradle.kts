@@ -113,6 +113,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.zxing.core)
     implementation(libs.play.services.code.scanner)
+    implementation(libs.unifiedpush.connector)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
