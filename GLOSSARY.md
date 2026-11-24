@@ -25,6 +25,8 @@ _Avoid_: Tagesausnahme (ersetzt nichts, sondern verändert)
 
 **Kindgerät**: Das gekoppelte Gerät des Kindes (Tablet). Jedes Kind hat genau ein Kindgerät. Wird ein neues gekoppelt, wird das alte entkoppelt, und eine laufende Sitzung läuft am neuen Gerät weiter. Hier wird die Sitzung gestartet und gestoppt, die Restzeit angezeigt und der Alarm abgespielt.
 
+**Einrichtungs-Checkliste**: Die Liste der Einstellungen am Kindgerät, die für einen zuverlässigen Alarm nötig sind (z. B. Alarmlautstärke über 0). Fehlt ein Punkt, sehen es das Kindgerät und die Eltern, und die Eltern werden einmal benachrichtigt.
+
 **Elterngerät**: Ein gekoppeltes Gerät der Eltern. Hier werden Kontingente bearbeitet und der Verlauf angesehen, und hier kommt die Benachrichtigung beim Alarm an. Ein Elterngerät gehört zu allen Kindern der Familie.
 
 **Vorwarnung**: Ein kurzer Ton am Kindgerät, einmal pro Sitzung, wenn die Restzeit eine einstellbare Schwelle erreicht oder schon darunter liegt (Standard: 5 Minuten).

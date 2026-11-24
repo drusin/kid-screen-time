@@ -45,6 +45,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie werden offline gepufferte Start- und Stopp-Ereignisse mit dem Server zusammengeführt?](issues/10-sync-offline-ereignisse.md): Sitzungs-Upsert mit Sitzungs-UUID vom Kindgerät über eine Outbox (online wie offline, Batch), Zeitpunkte als Alter über die monotone Uhr, ein Start wird nie abgelehnt, das frühere Ende gewinnt, Automatischer Stopp auch lokal geplant, keine nachgeholten Eltern-Benachrichtigungen
 - [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md): eigener Stack-Ordner in `~/docker` hinter Traefik (`kidscreentime.rusin.xyz`, `ntfy.rusin.xyz`), `/admin` auf eigenem Host-Port ohne Traefik-Route, ntfy von außen nur lesend, Config per Compose + `.env`, Image auf GHCR beim Release-Tag, Updates manuell (Server vor App)
 - [Was muss v1 für mehrere Kinder können?](issues/12-mehrere-kinder.md): Datenmodell und API mehrkindfähig, Eltern-UI in v1 für ein Kind, Regeln pro Kind und Zeitzone pro Familie, Kind wird beim ersten Kopplungscode fürs Kindgerät mit Namen angelegt, Name vorne in jeder Eltern-Benachrichtigung
+- [Merkt der Server, wenn das Kindgerät verstummt, und wie erfahren es die Eltern?](issues/13-lebenszeichen-kindgeraet.md): kein eigenes Lebenszeichen, „zuletzt gesehen“ nur aus normalen Syncs, Kindgerät meldet fehlende Checklisten-Punkte bei jedem Sync, einmalige Eltern-Benachrichtigung pro Übergang zu „etwas fehlt“ plus rote Anzeige
 
 ## Not yet specified
 
@@ -58,3 +59,4 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - Statistiken und Diagramme.
 - Nachträgliches Bearbeiten, Löschen oder Nachtragen von Sitzungen durch die Eltern: für v1 bewusst ausgeschlossen (entschieden in [Wie verhalten sich Kontingent und Sitzung in den Randfällen?](issues/04-domaenenregeln-randfaelle.md)).
 - Backups der Server-Datenbank: vom Nutzer für diese Map ausgeschlossen (entschieden in [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md)).
+- Erkennung von Funkstille des Kindgeräts (Schwellen, Benachrichtigung, Unterscheidung „aus“ / „gelöscht“): vom Nutzer ausgeschlossen, „zuletzt gesehen“ in der Geräteliste reicht (entschieden in [Merkt der Server, wenn das Kindgerät verstummt, und wie erfahren es die Eltern?](issues/13-lebenszeichen-kindgeraet.md)).
