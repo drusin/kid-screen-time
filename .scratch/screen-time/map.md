@@ -38,11 +38,11 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie kommen APK und Updates ohne Play Store auf die Geräte?](issues/03-apk-verteilung-updates.md): GitHub Releases + Obtainium, kostenloses „limited distribution“-Konto für Googles Entwicklerverifizierung ab 2027, ein Release-Keystore
 - [Wie verhalten sich Kontingent und Sitzung in den Randfällen?](issues/04-domaenenregeln-randfaelle.md): Tagesanpassung als ±Delta nur für heute, Wochenvorlage gilt ab morgen, kein Start bei Restzeit ≤ 0, Neuberechnung des Alarms bei Änderung, Automatischer Stopp nach Überziehungsgrenze, eine Familien-Zeitzone, Start/Stopp offline-fähig
 - [Wie werden Geräte gekoppelt und der Server abgesichert?](issues/05-kopplung-sicherheit.md): keine Konten, ein Geräte-Token mit Rolle pro Gerät, einmaliger Kopplungscode (QR, 10 min), Admin-Webformular (nur Heimnetz + Passwort) für das erste Elterngerät und die Recovery, ein Kindgerät pro Kind, WebPush-verschlüsselter Push-Payload
+- [Welche App-Architektur und welcher Stack?](issues/06-app-architektur-stack.md): eine native Kotlin/Compose-App für beide Rollen (`minSdk 33`, Material 3, nur Deutsch), reines Kotlin-Modul `domain` für die Regeln, Room + Ktor Client, Eltern-Aktionen nur online, Einrichtungs-Checkliste am Kindgerät, ntfy-App als UnifiedPush-Verteiler
 
 ## Not yet specified
 
 - **Deployment im Homelab**: Compose-Setup, Subdomain/Reverse-Proxy-Anbindung (inkl. Beschränkung des Admin-Webformulars auf das Heimnetz, Admin-Passwort als Env-Variable/Secret), Backups der Daten. Hängt von der Backend-Wahl ab.
-- **Build & Release**: Wie wird die APK gebaut (lokal vs. GitHub Actions), und wie wird sie signiert? Hängt vom Stack und vom Update-Weg ab.
 - **Synchronisation während einer laufenden Sitzung**: Das fachliche Verhalten steht fest (Randfall-Regeln). Offen ist das Protokoll: Wie werden offline gepufferte Start- und Stopp-Ereignisse übertragen und mit dem Serverstand zusammengeführt (Idempotenz, Reihenfolge, Konflikt mit einer Tagesanpassung, die inzwischen gebucht wurde)? Hängt von Backend-Stack und API-Form ab.
 - **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Erst relevant, wenn Datenmodell und UI stehen.
 - **Lebenszeichen des Kindgeräts**: Der Server merkt, wenn das Kindgerät sich nicht mehr meldet (deinstalliert, ausgeschaltet), und benachrichtigt die Eltern? Ob und wie, ist noch unscharf.
