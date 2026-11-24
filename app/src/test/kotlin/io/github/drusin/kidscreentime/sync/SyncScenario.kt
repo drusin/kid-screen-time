@@ -22,6 +22,14 @@ import io.ktor.server.testing.testApplication
 import java.io.IOException
 import java.nio.file.Path
 import java.time.Duration
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -52,7 +60,12 @@ import kotlinx.coroutines.flow.first
 fun syncScenario(dir: Path, block: suspend SyncScenario.() -> Unit) = testApplication {
     val server = TestServer(dir).also { it.install(this) }
     // Real time on Dispatchers.Default: the test host would otherwise skip delays, but Room and the HTTP round trip run on real threads.
-    withContext(Dispatchers.Default) { SyncScenario(server, this@testApplication).block() }
+    val scenario = SyncScenario(server, this)
+    try {
+        withContext(Dispatchers.Default) { scenario.block() }
+    } finally {
+        withContext(NonCancellable) { scenario.shutDown() }
+    }
 }
 
 
@@ -66,7 +79,7 @@ class SyncScenario(
     var online: Boolean = true
 
     /** Request bodies and paths the app sent, in order (also the failed ones). */
-    val requests = mutableListOf<String>()
+    val requests: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
 
     private val relay: HttpClient = host.createClient { }
 
@@ -82,6 +95,34 @@ class SyncScenario(
     }
 
     private val devices = mutableListOf<Device>()
+    private val allDevices = mutableListOf<Device>()
+
+    private val observers = mutableListOf<Job>()
+
+    /**
+     * Starts the Alarmkern observer of [this] device, as `KidScreenTimeApp` does in production (the test Application does not,
+     * see `TestKidScreenTimeApp`). It ends with the scenario; do not build your own scope for it.
+     */
+    fun Device.observeAlarm() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        app.container.alarmKern.observe(scope)
+        observers += scope.coroutineContext.job
+    }
+
+    /** Registers a ViewModel built by the scenario: its coroutines are cancelled and joined when the scenario ends. */
+    fun <T : ViewModel> track(viewModel: T): T {
+        observers += viewModel.viewModelScope.coroutineContext.job
+        return viewModel
+    }
+
+    /**
+     * Ends the scenario: observers are cancelled and joined (a cancelled scope alone leaves a query running), then the Room
+     * databases close, so nothing of this test runs on into the next one.
+     */
+    internal suspend fun shutDown() {
+        observers.forEach { it.cancelAndJoin() }
+        allDevices.forEach { runCatching { it.app.database.close() } }
+    }
 
     /** The Kindgerät most recently created by [device] / [pairChildDevice]. */
     val child: Device get() = devices.last()
@@ -104,7 +145,7 @@ class SyncScenario(
             }
             respond(answer.readRawBytes(), answer.status, headersOf(HttpHeaders.ContentType, answer.headers[HttpHeaders.ContentType] ?: "application/json"))
         }
-        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { self = it; devices += it }
+        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { self = it; devices += it; allDevices += it }
     }
 
     /** Creates a device and pairs it as the Kindgerät of a new Kind "Mia" (or of [childId] when given). */

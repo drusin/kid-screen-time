@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.ui
 
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.ui.parent.ParentHomeViewModel
 import io.github.drusin.kidscreentime.ui.parent.usedFraction
@@ -13,12 +14,9 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -26,11 +24,13 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class ParentHomeViewModelTest {
+    @get:Rule
+    val main = MainDispatcherRule()
+
     private val app = TestContainer()
 
     @Before
     fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         app.handler = { request ->
             when (request.url.encodedPath) {
                 ApiPaths.PAIRING_REDEEM -> respondJson("""{"deviceId":"d1","deviceToken":"tok-123","role":"PARENT"}""")
@@ -41,12 +41,10 @@ class ParentHomeViewModelTest {
         app.requests.clear()
     }
 
-    @After
-    fun tearDown() = Dispatchers.resetMain()
 
     @Test
     fun `Ohne gekoppeltes Kind zeigt die Startseite den Hinweis`() = runTest {
-        val viewModel = ParentHomeViewModel(app.container.parentRepository)
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
         assertTrue(viewModel.state.value.showNoChildHint)
@@ -56,7 +54,7 @@ class ParentHomeViewModelTest {
 
     @Test
     fun `Der Eltern-Snapshot wird mit dem Geräte-Token als Bearer-Header geholt`() = runTest {
-        ParentHomeViewModel(app.container.parentRepository).state.await { !it.loading }
+        main.track(ParentHomeViewModel(app.container.parentRepository)).state.await { !it.loading }
 
         val request = app.requests.single()
         assertEquals("https://kst.example.org" + ApiPaths.PARENT_SNAPSHOT, request.url.toString())
@@ -67,7 +65,7 @@ class ParentHomeViewModelTest {
     fun `Ist der Server nicht erreichbar, bleibt der Hinweis und die Startseite meldet es`() = runTest {
         app.handler = { throw IOException("offline") }
 
-        val viewModel = ParentHomeViewModel(app.container.parentRepository)
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
         assertTrue(viewModel.state.value.unavailable)
@@ -78,7 +76,7 @@ class ParentHomeViewModelTest {
     fun `Eine Antwort 401 gilt als nicht verfügbar, bis Ticket 12 das Entkoppeln anzeigt`() = runTest {
         app.handler = { respond("", HttpStatusCode.Unauthorized) }
 
-        val viewModel = ParentHomeViewModel(app.container.parentRepository)
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
         assertTrue(viewModel.state.value.unavailable)
@@ -88,7 +86,7 @@ class ParentHomeViewModelTest {
     fun `Die Statuskarte bekommt Restzeit, Verbrauch und Aufschlüsselung des Kindes vom Server`() = runTest {
         app.handler = { respondJson(SNAPSHOT_WITH_STATUS) }
 
-        val viewModel = ParentHomeViewModel(app.container.parentRepository)
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
         val child = viewModel.state.value.children.single()
@@ -114,7 +112,7 @@ class ParentHomeViewModelTest {
 
     private suspend fun viewModelWith(adjustment: Int = 0, last: Int? = null): ParentHomeViewModel {
         app.handler = { respondJson(snapshotWith(adjustment, last)) }
-        return ParentHomeViewModel(app.container.parentRepository).also { vm -> vm.state.await { !it.loading } }
+        return main.track(ParentHomeViewModel(app.container.parentRepository)).also { vm -> vm.state.await { !it.loading } }
     }
 
     @Test

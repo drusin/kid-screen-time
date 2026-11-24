@@ -1,6 +1,7 @@
 package io.github.drusin.kidscreentime.sync
 
 import io.github.drusin.kidscreentime.alarm.RecordingAlarmEffects
+import io.github.drusin.kidscreentime.waitFor
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Ausloeser
 import io.github.drusin.kidscreentime.parent.ParentActionResult
 import java.time.Duration
@@ -10,12 +11,6 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -38,20 +33,11 @@ class DailyAdjustmentScenarioTest {
 
     private fun planned(): Instant? = alarmManager.peekNextScheduledAlarm()?.let { Instant.ofEpochMilli(it.triggerAtMs) }
 
-    private suspend fun waitFor(condition: () -> Boolean) {
-        withTimeout(5_000) { while (!condition()) delay(20) }
-    }
-
-    private fun scenario(block: suspend SyncScenario.(CoroutineScope) -> Unit) = syncScenario(folder.newFolder().toPath()) {
+    private fun scenario(block: suspend SyncScenario.() -> Unit) = syncScenario(folder.newFolder().toPath()) {
         pairChildDevice(alarmEffects = effects)
         sync()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        child.app.container.alarmKern.observe(scope)
-        try {
-            block(scope)
-        } finally {
-            scope.cancel()
-        }
+        child.observeAlarm()
+        block()
     }
 
     @Test
@@ -78,9 +64,12 @@ class DailyAdjustmentScenarioTest {
     }
 
     @Test
-    fun `Eine Bonuszeit nach dem Sync lässt einen laufenden Alarm verstummen und plant die neue Vorwarnung`() = scenario {
+    fun `Eine Bonuszeit nach dem Sync lässt einen laufenden Alarm verstummen und plant den Alarm für die neue Restzeit`() = scenario {
         val parent = pairParentDevice()
+        val start = server.clock.now()
         start()
+        // The observer has seen the Start: its late replan can no longer land between the ring and the Bonuszeit.
+        waitFor("Vorwarnung geplant") { planned() == start + Duration.ofMinutes(55) }
         advance(Duration.ofMinutes(61))
         child.app.container.alarmKern.trigger()
         assertTrue("ring" in effects.calls)
@@ -89,8 +78,11 @@ class DailyAdjustmentScenarioTest {
         parent.app.container.parentRepository.bookAdjustment(child.childId!!, 30)
         sync()
 
-        waitFor { "silence" in effects.calls }
-        waitFor { planned() == server.clock.now() + Duration.ofMinutes(24) }
+        waitFor("Klingeln endet") { "silence" in effects.calls }
+        // The ring covered the Vorwarnung of this Sitzung (once per Sitzung, `Alarmverlauf`), so the next time is the Alarm at
+        // Restzeit 0 (90 − 61 = 29 min). A Vorwarnung planned here only showed up when a mixed state of snapshot and Outbox
+        // made the Alarmkern forget the Alarmverlauf (see `ChildRepository.local`).
+        waitFor("Alarm bei neuer Restzeit geplant") { planned() == server.clock.now() + Duration.ofMinutes(29) }
         assertEquals(listOf("silence"), effects.calls.distinct(), "Nichts klingelt mehr")
     }
 

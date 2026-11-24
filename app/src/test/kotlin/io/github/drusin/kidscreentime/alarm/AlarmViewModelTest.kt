@@ -1,5 +1,7 @@
 package io.github.drusin.kidscreentime.alarm
 
+import io.github.drusin.kidscreentime.waitFor
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import android.app.AlarmManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
@@ -20,13 +22,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
-import org.junit.After
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -44,11 +39,8 @@ class AlarmViewModelTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val effects = RecordingAlarmEffects()
 
-    @Before
-    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
-
-    @After
-    fun tearDown() = Dispatchers.resetMain()
+    @get:Rule
+    val main = MainDispatcherRule()
 
     private fun scenario(block: suspend SyncScenario.() -> Unit) = syncScenario(folder.newFolder().toPath()) {
         pairChildDevice(alarmEffects = effects)
@@ -58,10 +50,8 @@ class AlarmViewModelTest {
 
     private fun SyncScenario.viewModel(silence: () -> Unit = {}): AlarmViewModel {
         val app = child.app.container
-        return AlarmViewModel(app.alarmKern, app.childRepository, NoTestSession, silence)
+        return track(AlarmViewModel(app.alarmKern, app.childRepository, NoTestSession, silence))
     }
-
-    private suspend fun waitFor(condition: () -> Boolean) = withTimeout(5_000) { while (!condition()) delay(20) }
 
     @Test
     fun `Der Alarm zeigt die Überziehung der laufenden Sitzung`() = scenario {
@@ -127,7 +117,7 @@ class AlarmViewModelTest {
         val planned = shadowOf(context.getSystemService(AlarmManager::class.java)).peekNextScheduledAlarm()?.triggerAtMs
         assertEquals(now + Duration.ofMinutes(1), planned?.let(Instant::ofEpochMilli), "Die Vorwarnung der Testsitzung")
 
-        AlarmViewModel(kern, app.childRepository, test) {}.stop()
+        track(AlarmViewModel(kern, app.childRepository, test) {}).stop()
         waitFor { shadowOf(context.getSystemService(AlarmManager::class.java)).peekNextScheduledAlarm() == null }
         assertFalse(test.active)
     }

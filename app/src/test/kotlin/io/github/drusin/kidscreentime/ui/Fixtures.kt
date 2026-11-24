@@ -43,7 +43,8 @@ class TestContainer(
     var retriesScheduled = 0
         private set
 
-    val requests = mutableListOf<HttpRequestData>()
+    /** Written by the engine thread, read by the test thread. */
+    val requests: MutableList<HttpRequestData> = java.util.concurrent.CopyOnWriteArrayList()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -64,11 +65,11 @@ fun MockRequestHandleScope.respondJson(body: String, status: HttpStatusCode = Ht
     respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
 
 /**
- * Waits (in real time, at most 5 s) until the state satisfies [predicate]. Ktor's MockEngine answers on a
+ * Waits (in real time, bounded by `WAIT_LIMIT_MILLIS`, see `waitFor`) until the state satisfies [predicate]. Ktor's MockEngine answers on a
  * background dispatcher, so a ViewModel's request finishes slightly after `submit()` returns.
  */
 suspend fun <T> StateFlow<T>.await(predicate: (T) -> Boolean): T =
-    withContext(Dispatchers.Default) { withTimeout(5_000) { first(predicate) } }
+    withContext(Dispatchers.Default) { withTimeout(io.github.drusin.kidscreentime.WAIT_LIMIT_MILLIS) { first(predicate) } }
 
 /** The Kind-Snapshot of the REST contract as JSON, as the server would send it (Monday 2026-01-05, Berlin). */
 fun childSnapshotJson(snapshot: io.github.drusin.kidscreentime.api.ChildSnapshot): String =

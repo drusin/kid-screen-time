@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.alarm
 
+import io.github.drusin.kidscreentime.waitFor
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
@@ -14,12 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -29,7 +25,8 @@ import org.robolectric.Shadows.shadowOf
 
 /** Records what the Alarmkern lets happen at the device. */
 class RecordingAlarmEffects : AlarmEffects {
-    val calls = mutableListOf<String>()
+    /** Written by the observer thread, read and cleared by the test thread. */
+    val calls: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
     override fun warn() { calls += "warn" }
     override fun ring() { calls += "ring" }
     override fun silence() { calls += "silence" }
@@ -61,10 +58,6 @@ class AlarmKernTest {
 
     private fun kernOf(scenario: SyncScenario) = scenario.child.app.container.alarmKern
 
-    private suspend fun waitFor(what: String, condition: () -> Boolean) {
-        withTimeout(5_000) { while (!condition()) delay(20) }
-    }
-
     @Test
     fun `Beim Start plant der Alarmkern die Vorwarnung, nach dem Stopp storniert er`() = scenario {
         val start = server.clock.now()
@@ -80,8 +73,7 @@ class AlarmKernTest {
 
     @Test
     fun `Die Beobachtung plant bei Start, Stopp und Sync ohne weiteren Aufruf neu`() = scenario {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        kernOf(this).observe(scope)
+        child.observeAlarm()
         val start = server.clock.now()
 
         val id = start()
@@ -94,7 +86,6 @@ class AlarmKernTest {
 
         stop(id)
         waitFor("Stopp storniert") { planned() == null }
-        scope.cancel()
     }
 
     @Test

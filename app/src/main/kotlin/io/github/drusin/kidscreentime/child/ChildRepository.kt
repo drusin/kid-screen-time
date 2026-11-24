@@ -26,7 +26,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -70,15 +70,27 @@ class ChildRepository(
     private val outboxDao = database.outboxDao()
     private val syncLock = Mutex()
 
-    /** The stored snapshot, null until the first sync succeeded. */
-    val stored: Flow<StoredChildSnapshot?> = snapshotDao.observe().map { entity ->
-        entity?.let { runCatching { StoredChildSnapshot(json.decodeFromString<ChildSnapshot>(it.json), it.receivedAtEpochMillis) }.getOrNull() }
-    }
+    private fun decode(entity: ChildSnapshotEntity): StoredChildSnapshot? =
+        runCatching { StoredChildSnapshot(json.decodeFromString<ChildSnapshot>(entity.json), entity.receivedAtEpochMillis) }.getOrNull()
 
-    /** The snapshot with the Outbox on top, null until the first sync succeeded. Changes as soon as the Outbox does. */
-    val local: Flow<ChildLocalState?> = combine(stored, outboxDao.observeAll()) { stored, outbox ->
-        stored?.let { ChildLocalState(it, outbox.map { row -> PendingSession(row.sessionId, row.startWallMillis, row.endWallMillis) }) }
-    }
+    /** The stored snapshot, null until the first sync succeeded. */
+    val stored: Flow<StoredChildSnapshot?> = snapshotDao.observe().map { it?.let(::decode) }
+
+    /**
+     * The snapshot with the Outbox on top, null until the first sync succeeded. Changes as soon as the Outbox does.
+     * Snapshot and Outbox are read together in one transaction after every change of either table. Combining two separate
+     * Room flows would let a sync, which writes both in one transaction, show a mixed state for a moment (new Outbox, old
+     * snapshot: "the Sitzung is gone"), and the Alarmkern would plan from it, cancel the alarm and forget its Alarmverlauf.
+     */
+    val local: Flow<ChildLocalState?> = database.invalidationTracker.createFlow("child_snapshot", "outbox_session")
+        .map {
+            database.withTransaction {
+                val stored = snapshotDao.current()?.let(::decode)
+                val outbox = outboxDao.all()
+                stored?.let { ChildLocalState(it, outbox.map { row -> PendingSession(row.sessionId, row.startWallMillis, row.endWallMillis) }) }
+            }
+        }
+        .distinctUntilChanged()
 
     /** Starts a Sitzung: new UUID, written to the Outbox. The caller checks the rules (Restzeit > 0, none running) and then syncs. */
     suspend fun startSession(): String {

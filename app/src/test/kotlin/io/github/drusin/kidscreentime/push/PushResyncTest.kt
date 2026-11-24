@@ -1,5 +1,7 @@
 package io.github.drusin.kidscreentime.push
 
+import io.github.drusin.kidscreentime.waitFor
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.github.drusin.kidscreentime.KidScreenTimeApp
@@ -23,16 +25,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
-import org.junit.After
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -57,15 +53,8 @@ class PushResyncTest {
     private val authSecret = "BTBZMqHH6r4Tts7J_aSIgg"
     private val ntfyTopicUrl = "https://ntfy.example.org/upAbCdEfGh1234?up=1"
 
-    @Before
-    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
-
-    @After
-    fun tearDown() = Dispatchers.resetMain()
-
-    private suspend fun eventually(condition: suspend () -> Boolean) {
-        withTimeout(5_000) { while (!condition()) delay(20) }
-    }
+    @get:Rule
+    val main = MainDispatcherRule()
 
     /**
      * The service as the connector would run it. Robolectric creates it on the test thread, so it exists before the
@@ -88,7 +77,7 @@ class PushResyncTest {
 
         service.onMessage(PushMessage(signalBytes, decrypted = true), "default")
 
-        eventually { child.outbox().isEmpty() }
+        waitFor { child.outbox().isEmpty() }
         assertEquals(listOf("POST ${ApiPaths.CHILD_SYNC}"), requests)
         assertEquals(server.clock.now().toEpochMilli(), serverSession(id).first)
     } }
@@ -126,7 +115,7 @@ class PushResyncTest {
             }
         }
         runBlocking { app.container.pairingRepository.pair("https://kst.example.org", "ABCD-EFGH", "Handy") }
-        val viewModel = ParentHomeViewModel(app.container.parentRepository, app.container.pushHandler.signals)
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository, app.container.pushHandler.signals))
         runBlocking { app.snapshotRequests(1) }
         app.requests.clear()
 
@@ -138,7 +127,7 @@ class PushResyncTest {
     }
 
     private suspend fun TestContainer.snapshotRequests(count: Int) =
-        withTimeout(5_000) { while (requests.count { it.url.encodedPath == ApiPaths.PARENT_SNAPSHOT } < count) delay(20) }
+        waitFor("$count Abgleich(e) des Eltern-Snapshots") { requests.count { it.url.encodedPath == ApiPaths.PARENT_SNAPSHOT } >= count }
 
     @Test
     fun `Das Signal erreicht Abonnenten mit seinem Text, damit Benachrichtigungen ihn zeigen können`() = runTest {
@@ -161,7 +150,7 @@ class PushResyncTest {
 
         service.onNewEndpoint(PushEndpoint(ntfyTopicUrl, PublicKeySet(publicKey, authSecret), false), "default")
 
-        eventually { storedPush() != null }
+        waitFor { storedPush() != null }
         assertEquals(Triple(ntfyTopicUrl, publicKey, authSecret), storedPush())
     } }
 

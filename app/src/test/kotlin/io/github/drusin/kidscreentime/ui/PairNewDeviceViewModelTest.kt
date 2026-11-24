@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.ui
 
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.PairingQr
@@ -18,12 +19,10 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,6 +30,9 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class PairNewDeviceViewModelTest {
+    @get:Rule
+    val main = MainDispatcherRule()
+
     private val app = TestContainer()
     private var snapshot = SNAPSHOT_WITHOUT_CHILD
     private var createCodeStatus = HttpStatusCode.OK
@@ -41,7 +43,6 @@ class PairNewDeviceViewModelTest {
 
     @Before
     fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         app.handler = { request ->
             when (request.url.encodedPath) {
                 ApiPaths.PAIRING_REDEEM -> respondJson("""{"deviceId":"d1","deviceToken":"tok-1","role":"PARENT"}""")
@@ -57,7 +58,7 @@ class PairNewDeviceViewModelTest {
 
     @After
     fun tearDown() {
-        Dispatchers.resetMain()
+        main.cancelViewModels()
         app.database.close()
     }
 
@@ -69,7 +70,7 @@ class PairNewDeviceViewModelTest {
         append(""""snapshot":$snapshotJson}""")
     }
 
-    private fun viewModel() = PairNewDeviceViewModel(app.container.parentRepository, app.container.monotonicClock)
+    private fun viewModel() = main.track(PairNewDeviceViewModel(app.container.parentRepository, app.container.monotonicClock))
 
     @Test
     fun `Gibt es noch kein Kind, fragt das Koppeln eines Kindgeräts zuerst nach dem Namen`() = runTest {

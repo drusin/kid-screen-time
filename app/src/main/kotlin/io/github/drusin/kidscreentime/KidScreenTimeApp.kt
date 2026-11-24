@@ -6,7 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class KidScreenTimeApp : Application() {
+open class KidScreenTimeApp : Application() {
     private var injected: AppContainer? = null
     private val defaultContainer: AppContainer by lazy { AppContainer(this) }
 
@@ -22,9 +22,18 @@ class KidScreenTimeApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Every process start (app start, boot receiver, alarm, push) plans the alarm from the local stand and
-        // again after every change of it (Start, Stopp, every sync). This is the one hook of the Alarmkern.
-        container.alarmKern.observe(processScope)
+        observeAlarm()
         UnlockSyncReceiver.register(this)
+    }
+
+    /**
+     * Every process start (app start, boot receiver, alarm, push) plans the alarm from the local stand and
+     * again after every change of it (Start, Stopp, every sync). This is the one hook of the Alarmkern.
+     * Open only for the Robolectric tests: they run with their own containers per simulated device, and this observer
+     * would build a second, real container whose never-ending observer cancels the shared alarm and clears the shared
+     * `AlarmMemory` while a test runs (see `TestKidScreenTimeApp`).
+     */
+    protected open fun observeAlarm() {
+        container.alarmKern.observe(processScope)
     }
 }

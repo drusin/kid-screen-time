@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.ui
 
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.ChildSyncRequest
 import io.github.drusin.kidscreentime.api.DayAdjustment
@@ -24,12 +25,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -37,12 +36,14 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class ChildHomeViewModelTest {
+    @get:Rule
+    val main = MainDispatcherRule()
+
     private val app = TestContainer()
     private val minute = 60_000L
 
     @Before
     fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         serve(testChildSnapshot(app.clock.now()))
         runBlocking { app.container.pairingRepository.pair("https://kst.example.org", "ABCD-EFGH", "Tablet") }
         app.requests.clear()
@@ -50,7 +51,7 @@ class ChildHomeViewModelTest {
 
     @After
     fun tearDown() {
-        Dispatchers.resetMain()
+        main.cancelViewModels()
         app.database.close()
     }
 
@@ -64,7 +65,7 @@ class ChildHomeViewModelTest {
         }
     }
 
-    private fun viewModel() = ChildHomeViewModel(app.container.childRepository, app.container.wallClock)
+    private fun viewModel() = main.track(ChildHomeViewModel(app.container.childRepository, app.container.wallClock))
 
     @Test
     fun `Das Tablet ist nach der Kopplung ein Kindgerät`() {

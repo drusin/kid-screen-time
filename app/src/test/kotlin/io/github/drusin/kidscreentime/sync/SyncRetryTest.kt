@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.sync
 
+import io.github.drusin.kidscreentime.waitFor
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
@@ -14,8 +15,6 @@ import io.github.drusin.kidscreentime.child.ChildSyncResult
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -43,8 +42,6 @@ class SyncRetryTest {
 
     private fun workInfos() = WorkManager.getInstance(context).getWorkInfosForUniqueWork(WorkManagerSyncRetry.WORK_NAME).get()
 
-    private suspend fun eventually(condition: suspend () -> Boolean) = withTimeout(10_000) { while (!condition()) delay(20) }
-
     private fun useContainerOf(device: SyncScenario.Device) =
         (context as KidScreenTimeApp).injectContainerForTest(device.app.container)
 
@@ -68,11 +65,11 @@ class SyncRetryTest {
             online = true
             advance(Duration.ofMinutes(3))
             WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(waiting.id)
-            eventually { device.app.database.outboxDao().all().isEmpty() }
+            waitFor { device.app.database.outboxDao().all().isEmpty() }
 
             assertEquals(Triple(t0, null, null), serverSession(id))
             assertTrue(serverRecordedOffline(id))
-            eventually { workInfos().single().state == WorkInfo.State.SUCCEEDED }
+            waitFor { workInfos().single().state == WorkInfo.State.SUCCEEDED }
         }
 
     @Test
@@ -86,8 +83,8 @@ class SyncRetryTest {
             device.sync()
 
             WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(workInfos().single().id)
-            eventually { workInfos().single().runAttemptCount >= 1 }
-            eventually { workInfos().single().state == WorkInfo.State.ENQUEUED }
+            waitFor { workInfos().single().runAttemptCount >= 1 }
+            waitFor { workInfos().single().state == WorkInfo.State.ENQUEUED }
 
             assertEquals(1, device.app.database.outboxDao().all().size, "Nichts ging verloren")
         }
@@ -104,7 +101,7 @@ class SyncRetryTest {
         val registered = shadowOf(context as android.app.Application).registeredReceivers
         assertTrue(registered.any { it.broadcastReceiver is UnlockSyncReceiver && it.intentFilter.hasAction(Intent.ACTION_USER_PRESENT) })
         UnlockSyncReceiver().onReceive(context, Intent(Intent.ACTION_USER_PRESENT))
-        eventually { device.app.database.outboxDao().all().isEmpty() }
+        waitFor { device.app.database.outboxDao().all().isEmpty() }
 
         assertEquals(id, serverSnapshot().status.runningSession?.id)
     }

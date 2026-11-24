@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.ui
 
+import io.github.drusin.kidscreentime.MainDispatcherRule
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.PairingQr
 import io.github.drusin.kidscreentime.pairing.DeviceState
@@ -16,12 +17,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,13 +28,10 @@ import org.robolectric.RobolectricTestRunner
 class PairDeviceViewModelTest {
     private val app = TestContainer()
 
-    @Before
-    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    @get:Rule
+    val main = MainDispatcherRule()
 
-    @After
-    fun tearDown() = Dispatchers.resetMain()
-
-    private fun viewModel() = PairDeviceViewModel(app.container.pairingRepository, defaultDeviceName = "Pixel")
+    private fun viewModel() = main.track(PairDeviceViewModel(app.container.pairingRepository, defaultDeviceName = "Pixel"))
 
     @Test
     fun `Koppeln ist erst mit Server-URL, Code und Gerätename möglich`() {
