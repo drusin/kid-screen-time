@@ -49,4 +49,6 @@ CI: `.github/workflows/ci.yml` läuft bei Push auf `main` und bei Pull Requests 
 
 Ein gepushter Tag `vX.Y.Z` startet `.github/workflows/release.yml`: zuerst dasselbe Gate wie die CI (`ci.yml` als wiederverwendbarer Workflow), danach signierte APK, GitHub Release mit APK und automatischen Notes, Server-Image `ghcr.io/drusin/kid-screen-time-server:X.Y.Z` (`Dockerfile`, `linux/amd64`, kein `latest`). `versionName` = `X.Y.Z`, `versionCode = X*10000 + Y*100 + Z`, lokal ohne Tag `0.0.0-dev`. Die Version kommt aus Env `RELEASE_TAG` oder `-PreleaseTag`; die Signatur nur aus den Env-Variablen `RELEASE_KEYSTORE_FILE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` (ohne sie bleibt die Release-APK unsigniert). Einrichtung und Ablauf für den Nutzer: [docs/release-checkliste.md](docs/release-checkliste.md).
 
+Betrieb im Homelab (Beispiel-Compose in `deploy/compose/`, Erstinstallation, Update, Push-Test): [docs/betrieb.md](docs/betrieb.md).
+
 Server-Image lokal: `./gradlew :server:shadowJar && docker build -t kid-screen-time-server .`

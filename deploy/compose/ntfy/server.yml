@@ -1,0 +1,15 @@
+# ntfy für Bildschirmzeit. base-url muss gleich NTFY_PUBLIC_URL sein,
+# sonst nennt der UnifiedPush-Endpoint eine falsche Adresse.
+base-url: "https://ntfy.rusin.xyz"
+listen-http: ":80"
+behind-proxy: true # Client-IP aus X-Forwarded-For (Rate-Limits pro Client)
+
+# Keine Benutzer, kein Token: auth-file und auth-default-access bleiben ungesetzt (Standard: alle dürfen lesen und
+# schreiben). Schreiben von außen sperrt die Traefik-Route (nur GET/HEAD/OPTIONS).
+
+# Nachrichten bleiben 12 Stunden (Resync-Signale sind danach wertlos).
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "12h"
+
+# Keine Attachments: attachment-cache-dir bleibt ungesetzt. Kein Upstream: upstream-base-url bleibt ungesetzt.
+# Rate-Limits: Standardwerte, bewusst nicht gesetzt.
