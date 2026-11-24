@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bildschirmzeit</string>
+    <string name="pair_device_title">Gerät koppeln</string>
+    <string name="pair_device_hint">Noch nicht gekoppelt. Die Kopplung folgt in einem späteren Schritt.</string>
+</resources>
