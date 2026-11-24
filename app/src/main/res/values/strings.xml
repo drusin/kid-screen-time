@@ -2,5 +2,19 @@
 <resources>
     <string name="app_name">Bildschirmzeit</string>
     <string name="pair_device_title">Gerät koppeln</string>
-    <string name="pair_device_hint">Noch nicht gekoppelt. Die Kopplung folgt in einem späteren Schritt.</string>
+    <string name="pair_device_hint">Gib die Server-URL und den Kopplungscode ein. Den ersten Code erzeugst du im Admin-Formular am Server im Heimnetz.</string>
+    <string name="pair_device_server_url">Server-URL</string>
+    <string name="pair_device_code">Kopplungscode</string>
+    <string name="pair_device_name">Gerätename</string>
+    <string name="pair_device_submit">Koppeln</string>
+    <string name="pair_device_submitting">Koppeln …</string>
+    <string name="pair_error_invalid_server_url">Das ist keine gültige Server-URL.</string>
+    <string name="pair_error_invalid_code">Der Kopplungscode ist ungültig, schon benutzt oder abgelaufen.</string>
+    <string name="pair_error_rate_limited">Zu viele Fehlversuche. Bitte in einer Minute erneut versuchen.</string>
+    <string name="pair_error_server_unreachable">Der Server ist nicht erreichbar.</string>
+    <string name="pair_error_unexpected">Die Kopplung ist fehlgeschlagen.</string>
+    <string name="parent_home_no_child_title">Noch kein Kind gekoppelt</string>
+    <string name="parent_home_no_child_hint">Sobald ein Kindgerät gekoppelt ist, erscheint hier der Stand.</string>
+    <string name="parent_home_unavailable">Der Server ist nicht erreichbar.</string>
+    <string name="child_device_placeholder">Dieses Gerät ist als Kindgerät gekoppelt.</string>
 </resources>

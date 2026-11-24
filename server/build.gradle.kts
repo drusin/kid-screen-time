@@ -20,6 +20,8 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.server.html.builder)
+    implementation(libs.sqlite.jdbc)
     implementation(libs.logback.classic)
 
     testImplementation(testFixtures(project(":domain")))

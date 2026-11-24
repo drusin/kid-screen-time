@@ -23,7 +23,22 @@ Eine Android-App plus Server, mit der Eltern die Bildschirmzeit ihres Kindes als
 ./gradlew test                   # nur Tests (JVM, inkl. Robolectric und Architekturtest)
 ./gradlew :app:lint              # nur Android Lint
 ./gradlew :server:shadowJar      # nur das Fat-JAR
-java -jar server/build/libs/kid-screen-time-server.jar   # Server starten (PORT, Standard 8080), GET /health
+java -jar server/build/libs/kid-screen-time-server.jar   # Server starten, GET /health (Konfiguration siehe unten)
 ```
+
+## Server konfigurieren
+
+Umgebungsvariablen. Fehlt eine Pflichtvariable, startet der Server nicht.
+
+| Variable | Pflicht | Bedeutung |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | ja | Passwort des Admin-Formulars |
+| `FAMILY_TIME_ZONE` | ja | Zeitzone der Familie (z. B. `Europe/Berlin`), unabhängig von der Container-Zeitzone |
+| `PUBLIC_SERVER_URL` | ja | öffentliche URL des Servers (wird in der App eingegeben) |
+| `NTFY_PUBLIC_URL`, `NTFY_INTERNAL_URL` | ja | ntfy von außen und aus dem Server-Netz |
+| `DATABASE_PATH` | nein | SQLite-Datei, Standard `data/kid-screen-time.db` |
+| `PORT` / `ADMIN_PORT` | nein | öffentlicher Port (8080) und Admin-Port (8081, nicht ins Internet publizieren) |
+
+Erstes Elterngerät koppeln: `http://<Server>:<ADMIN_PORT>/admin` im Heimnetz öffnen, Passwort eingeben, den Code samt Server-URL in der App unter „Gerät koppeln“ eintragen.
 
 CI: `.github/workflows/ci.yml` läuft bei Push auf `main` und bei Pull Requests und führt `./gradlew build` aus.
