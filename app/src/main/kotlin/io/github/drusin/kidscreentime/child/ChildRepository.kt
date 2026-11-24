@@ -21,6 +21,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.utils.io.CancellationException
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -88,8 +90,12 @@ class ChildRepository(
         return id
     }
 
-    /** Stops the Sitzung [sessionId]: its row in the Outbox gets the end. The caller syncs afterwards. */
-    suspend fun stopSession(sessionId: String) {
+    /**
+     * Stops the Sitzung [sessionId]: its row in the Outbox gets the end. The caller syncs afterwards. [at] is the end
+     * when it lies in the past (the Automatischer Stopp ends at the time the Überziehungsgrenze was reached, even if the
+     * alarm fired late); default is now.
+     */
+    suspend fun stopSession(sessionId: String, at: Instant? = null) {
         database.withTransaction {
             val row = outboxDao.find(sessionId) ?: run {
                 // Known only from the snapshot (started at an earlier time): the Stopp brings its Start with it.
@@ -97,10 +103,13 @@ class ChildRepository(
                 OutboxSessionEntity(sessionId, monotonicStartFor(start), start)
             }
             if (row.endWallMillis != null) return@withTransaction
+            val now = wallClock.now()
+            val end = at?.takeIf { it.isBefore(now) } ?: now
             outboxDao.upsert(
                 row.copy(
-                    endMonotonicMillis = monotonicClock.elapsed().toMillis(),
-                    endWallMillis = wallClock.now().toEpochMilli(),
+                    // Same age as at the wall clock: the monotonic end is as far in the past as the end is.
+                    endMonotonicMillis = monotonicClock.elapsed().toMillis() - Duration.between(end, now).toMillis(),
+                    endWallMillis = end.toEpochMilli(),
                     revision = row.revision + 1,
                 ),
             )

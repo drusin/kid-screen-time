@@ -190,6 +190,38 @@ class AlarmKernTest {
     }
 
     @Test
+    fun `Der Alarmkern plant den lokalen Automatischen Stopp als nächsten Zeitpunkt nach der letzten Wiederholung`() = scenario {
+        val start = server.clock.now()
+        start()
+        advance(Duration.ofMinutes(114))
+        kernOf(this).trigger() // overdue Alarm rings, the next repetition is planned after it
+        assertEquals(server.clock.now() + Duration.ofMinutes(5), planned(), "Wiederholung nach 119 min, vor dem Stopp")
+
+        advance(Duration.ofMinutes(5))
+        kernOf(this).trigger()
+
+        assertEquals(start + Duration.ofMinutes(120), planned(), "60 min Kontingent + 60 min Überziehungsgrenze: der Stopp, keine Wiederholung danach")
+    }
+
+    @Test
+    fun `Der Automatische Stopp beendet die Sitzung lokal zum Zeitpunkt der Grenze, der Alarm hört auf und der Stand wird synchronisiert`() = scenario {
+        val start = server.clock.now()
+        val id = start()
+        sync()
+        advance(Duration.ofMinutes(125)) // the alarm clock fired late
+        effects.calls.clear()
+
+        assertEquals(listOf(Ausloeser.AUTOMATISCHER_STOPP), kernOf(this).trigger())
+
+        assertEquals(setOf("silence"), effects.calls.toSet(), "Es klingelt nichts mehr, ein Klingeln endet")
+        assertNull(planned(), "Keine Sitzung, nichts geplant")
+        assertNull(kernOf(this).currentStand()?.laufendeSitzung)
+        val ended = serverSession(id)
+        assertEquals(start.toEpochMilli() + 120 * 60_000L, ended.second, "Ende = Zeitpunkt der Grenze, nicht der späte Alarm")
+        assertTrue(child.outbox().isEmpty(), "Der Stopp ging über die Outbox und wurde zugestellt")
+    }
+
+    @Test
     fun `Das Manifest meldet den Boot-Receiver und den Alarm-Receiver`() {
         val pm = context.packageManager
         val boot = pm.queryBroadcastReceivers(Intent(Intent.ACTION_BOOT_COMPLETED).setPackage(context.packageName), 0)

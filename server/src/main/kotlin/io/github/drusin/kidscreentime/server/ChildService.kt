@@ -20,6 +20,7 @@ import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tagesstand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Wochenvorlage
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.WochenvorlageVersion
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Zustand
+import io.github.drusin.kidscreentime.domain.bildschirmzeit.faelligeZeitpunkte
 import io.github.drusin.kidscreentime.domain.clock.WallClock
 import java.sql.Connection
 import java.time.DayOfWeek
@@ -28,6 +29,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Kinder: creating them (with the Standardwerte) and reading their state. The values come from `domain`
@@ -38,6 +40,15 @@ class ChildService(
     private val wallClock: WallClock,
     private val zone: ZoneId,
 ) {
+    private val changeListeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /** [listener] runs after every committed change of the stand of a Kind (the event scheduler calculates again then). */
+    fun onStandChanged(listener: () -> Unit) {
+        changeListeners += listener
+    }
+
+    fun notifyStandChanged() = changeListeners.forEach { it() }
+
     /**
      * Creates a Kind with the Standardwerte of `domain`: Wochenvorlage valid from today (so the Kind has time
      * right away), Vorwarnschwelle and Überziehungsgrenze. Runs in the caller's transaction.
@@ -64,6 +75,35 @@ class ChildService(
             it.executeUpdate()
         }
         return id
+    }
+
+    fun childIds(): List<String> = database.transaction { c ->
+        c.createStatement().use { st ->
+            st.executeQuery("SELECT id FROM children ORDER BY created_at, id").use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
+        }
+    }
+
+    /** When the running Sitzung of [childId] reaches the Überziehungsgrenze (may lie in the past), null if none runs. */
+    fun nextAutomaticStop(childId: String, now: Instant): Instant? = database.transaction { c ->
+        load(c, childId, now)?.stand?.faelligeZeitpunkte(now)?.automatischerStopp
+    }
+
+    /**
+     * Ends the running Sitzung of [childId] when its Automatischer Stopp is due at [now]: the end is the time the
+     * Überziehungsgrenze was reached (not [now]), the reason "Automatischer Stopp". Null when nothing was due.
+     */
+    fun stopAutomatically(childId: String, now: Instant): AutomaticStop? = database.transaction { c ->
+        val stand = load(c, childId, now)?.stand ?: return@transaction null
+        val stop = stand.faelligeZeitpunkte(now).automatischerStopp?.takeUnless { it.isAfter(now) } ?: return@transaction null
+        val session = stand.tagesstand(now).laufendeSitzung ?: return@transaction null
+        val changed = c.prepareStatement(
+            "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = 'AUTOMATIC_STOP' WHERE id = ? AND end_at IS NULL",
+        ).use {
+            it.setLong(1, stop.toEpochMilli())
+            it.setString(2, session.id)
+            it.executeUpdate()
+        }
+        if (changed == 1) AutomaticStop(childId, session.id, stop) else null
     }
 
     fun exists(childId: String): Boolean = database.transaction { c ->
@@ -98,7 +138,7 @@ class ChildService(
         val invalid = updates.firstOrNull { runCatching { UUID.fromString(it.id) }.isFailure }
         if (invalid != null) return SyncResult.Invalid("Ungültige Sitzungs-ID: ${invalid.id}")
         val now = wallClock.now()
-        return try {
+        val result = try {
             database.transaction { c ->
                 for (update in updates.sortedBy { -it.startAgeMillis }) {
                     if (!upsert(c, childId, update, now)) throw ForeignSessionException()
@@ -110,6 +150,8 @@ class ChildService(
             // Thrown inside the transaction on purpose: everything of this batch is rolled back.
             SyncResult.ForeignSession
         }
+        if (result is SyncResult.Synced) notifyStandChanged()
+        return result
     }
 
     private class ForeignSessionException : RuntimeException()

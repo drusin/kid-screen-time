@@ -22,7 +22,7 @@ Es gibt keine instrumentierten Tests und keine Emulator-Läufe. Was nur am Gerä
 7. **„Nicht stören“ an.** Wie 6 mit aktiviertem „Nicht stören“: Alarm und Vorwarnung sind hörbar (Alarme sind erlaubt). Bei Abweichung die Ausnahme „Alarme“ in „Nicht stören“ prüfen.
 8. **Neustart während einer Sitzung.** Testsitzung starten, Tablet neu starten (Entsperren ist nicht nötig, der Boot-Receiver braucht nur den Gerätestart; bei Samsung „geschützter Speicher“ ggf. einmal entsperren). Der Alarm kommt trotzdem zur richtigen Zeit. Mit echter Sitzung wiederholen: Start am Kind-Bildschirm, Neustart, Alarm bei Restzeit 0.
 9. **Push-Weg** (ab Ticket 13): Tagesanpassung am Elterngerät buchen. Sie kommt in wenigen Sekunden am Tablet an, der Alarmkern plant neu (Bonus bei klingelndem Alarm lässt ihn verstummen, Abzug unter den Verbrauch lässt ihn sofort klingeln).
-10. **Automatischer Stopp** (ab Ticket 07): Sitzung bis zur Überziehungsgrenze laufen lassen. Die Sitzung endet am Tablet ohne Zutun, der Alarm hört auf.
+10. **Automatischer Stopp** (Ticket 07): Sitzung bis zur Überziehungsgrenze laufen lassen (Debug: Testsitzung, 2 min Kontingent plus Überziehungsgrenze). Die Sitzung endet am Tablet ohne Zutun, der Alarm hört auf, das Vollbild schließt. Auch mit ausgeschaltetem WLAN prüfen; danach WLAN an: am Server steht „Automatisch gestoppt“ mit dem Ende zur Grenze.
 11. **Nächster Wecker.** In der Uhr-App zeigt das Tablet während einer Sitzung den nächsten geplanten Zeitpunkt als „nächster Wecker“ (so sieht man, dass `setAlarmClock` geplant ist).
 
 ## Durchgänge

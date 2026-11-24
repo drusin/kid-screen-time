@@ -23,12 +23,14 @@ class FaelligeZeitpunkteTest {
         sitzungen: List<Sitzung> = emptyList(),
         anpassungen: List<Tagesanpassung> = emptyList(),
         vorwarnschwelle: Duration = minuten(5),
+        ueberziehungsgrenze: Duration = minuten(60),
     ) = KindStand(
         zeitzone = berlin,
         wochenvorlage = Wochenvorlage(listOf(WochenvorlageVersion.gleichbleibend(LocalDate.of(2026, 1, 1), kontingentMinuten))),
         tagesanpassungen = anpassungen,
         sitzungen = sitzungen,
         vorwarnschwelle = vorwarnschwelle,
+        ueberziehungsgrenze = ueberziehungsgrenze,
     )
 
     private fun laufend(seitMinuten: Long = 0, id: String = "s1") = Sitzung(id, clock.now() - minuten(seitMinuten))
@@ -172,5 +174,61 @@ class FaelligeZeitpunkteTest {
         val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = listOf(laufend()), vorwarnschwelle = minuten(10)).zeitpunkte()
 
         assertEquals(clock.now() + minuten(50), zeitpunkte.von(Ausloeser.VORWARNUNG))
+    }
+
+    @Test
+    fun `Der Automatische Stopp kommt, wenn die Überziehung die Grenze erreicht`() {
+        val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 10))).zeitpunkte()
+
+        // 50 min Restzeit plus 60 min Überziehungsgrenze.
+        assertEquals(clock.now() + minuten(110), zeitpunkte.von(Ausloeser.AUTOMATISCHER_STOPP))
+        assertEquals(clock.now() + minuten(110), zeitpunkte.automatischerStopp)
+    }
+
+    @Test
+    fun `Ist die Grenze schon überschritten, steht der Stopp mit dem Zeitpunkt der Grenze an, nicht mit jetzt`() {
+        // 90 min gelaufen bei 60 min Kontingent: die Überziehung (30 min) ist 30 min von der Grenze entfernt.
+        val vorbei = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 90))).zeitpunkte()
+        assertEquals(clock.now() + minuten(30), vorbei.von(Ausloeser.AUTOMATISCHER_STOPP))
+
+        // 150 min gelaufen: die Grenze (nach 120 min) liegt 30 min zurück, die Sitzung hätte dort geendet.
+        val lange = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 150))).zeitpunkte()
+        assertEquals(clock.now() - minuten(30), lange.von(Ausloeser.AUTOMATISCHER_STOPP))
+        assertEquals(listOf(Ausloeser.AUTOMATISCHER_STOPP), lange.faelligBis(clock.now()).map { it.ausloeser })
+    }
+
+    @Test
+    fun `Nach dem Stopp klingelt nichts mehr, und der Stopp ist der letzte Zeitpunkt`() {
+        val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 10))).zeitpunkte()
+
+        assertEquals(Ausloeser.AUTOMATISCHER_STOPP, zeitpunkte.liste.last().ausloeser)
+        assertTrue(zeitpunkte.liste.all { it.zeitpunkt <= zeitpunkte.automatischerStopp!! })
+
+        // 115 min gelaufen: der Stopp kommt in 5 min. Die Wiederholung in 2 min liegt davor, die nach 5 min nicht mehr.
+        val laeuft = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 115)))
+        val vorDemStopp = laeuft.zeitpunkte(Alarmverlauf(true, clock.now() - minuten(3)))
+        assertEquals(listOf(Ausloeser.ALARM, Ausloeser.AUTOMATISCHER_STOPP), vorDemStopp.liste.map { it.ausloeser })
+        val amStopp = laeuft.zeitpunkte(Alarmverlauf(true, clock.now()))
+        assertEquals(listOf(Ausloeser.AUTOMATISCHER_STOPP), amStopp.liste.map { it.ausloeser }, "Die Wiederholung käme nicht vor dem Stopp")
+    }
+
+    @Test
+    fun `Die Überziehungsgrenze der Eltern gilt`() {
+        val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = listOf(laufend()), ueberziehungsgrenze = minuten(15)).zeitpunkte()
+
+        assertEquals(clock.now() + minuten(75), zeitpunkte.von(Ausloeser.AUTOMATISCHER_STOPP))
+    }
+
+    @Test
+    fun `Lag die Überziehung schon vor dem Start über der Grenze, endet die Sitzung mit ihrem Start`() {
+        val frueher = Sitzung("alt", clock.now() - minuten(300), SitzungsEnde(clock.now() - minuten(120), Endegrund.GESTOPPT))
+        val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = listOf(frueher, laufend(seitMinuten = 10, id = "neu"))).zeitpunkte()
+
+        assertEquals(clock.now() - minuten(10), zeitpunkte.von(Ausloeser.AUTOMATISCHER_STOPP))
+    }
+
+    @Test
+    fun `Ohne laufende Sitzung gibt es keinen Automatischen Stopp`() {
+        assertNull(stand(sitzungen = emptyList()).zeitpunkte().automatischerStopp)
     }
 }

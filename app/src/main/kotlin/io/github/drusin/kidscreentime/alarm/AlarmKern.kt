@@ -24,8 +24,8 @@ import kotlinx.coroutines.sync.withLock
  * - [trigger] runs when the alarm fires: it carries out everything that is due (`when` over [Ausloeser]), remembers it,
  *   and plans the next time.
  *
- * Later tickets add due times in `domain` (Automatischer Stopp, Mitternacht) and handle the new [Ausloeser] in
- * [trigger]; planning needs no change.
+ * Automatischer Stopp (ticket 07): the Sitzung is stopped through the Outbox at the time `domain` names, and synced.
+ * Later tickets add due times in `domain` (Mitternacht) and handle the new [Ausloeser] in [trigger]; planning needs no change.
  */
 class AlarmKern(
     private val repository: ChildRepository,
@@ -50,8 +50,17 @@ class AlarmKern(
     /** The stand the alarm works with right now (a test Sitzung of the debug build wins), null before the first sync. */
     suspend fun currentStand(): Tagesstand? = kindStand(repository.local.first())?.tagesstand(wallClock.now())
 
-    /** The alarm fired: does what is due and plans the next time. Returns what was due. */
-    suspend fun trigger(): List<Ausloeser> = lock.withLock {
+    /**
+     * The alarm fired: does what is due and plans the next time. Returns what was due. After an Automatischer Stopp the
+     * Outbox is synced at once (outside the lock: it is network).
+     */
+    suspend fun trigger(): List<Ausloeser> {
+        val due = lock.withLock { triggerLocked() }
+        if (Ausloeser.AUTOMATISCHER_STOPP in due) repository.sync()
+        return due
+    }
+
+    private suspend fun triggerLocked(): List<Ausloeser> {
         val local = repository.local.first()
         val now = wallClock.now()
         val kind = kindStand(local)
@@ -61,9 +70,11 @@ class AlarmKern(
             return emptyList()
         }
         var verlauf = memory.load(sessionId)
-        // A late alarm may find both due: the ring covers the Vorwarnung.
-        var due = kind.faelligeZeitpunkte(now, verlauf).faelligBis(now).map { it.ausloeser }
+        val faellig = kind.faelligeZeitpunkte(now, verlauf).faelligBis(now)
+        var due = faellig.map { it.ausloeser }
+        // A late alarm may find both due: the ring covers the Vorwarnung. After the Stopp nothing rings any more.
         if (Ausloeser.ALARM in due) due = due - Ausloeser.VORWARNUNG
+        if (Ausloeser.AUTOMATISCHER_STOPP in due) due = listOf(Ausloeser.AUTOMATISCHER_STOPP)
         due.forEach { ausloeser ->
             when (ausloeser) {
                 Ausloeser.VORWARNUNG -> {
@@ -74,11 +85,17 @@ class AlarmKern(
                     verlauf = verlauf.copy(vorwarnungGegeben = true, letzterAlarm = now)
                     effects.ring()
                 }
+                Ausloeser.AUTOMATISCHER_STOPP -> {
+                    // The end is the time the limit was reached, like at the server (the earlier end wins, so no conflict).
+                    val zeitpunkt = faellig.first { it.ausloeser == Ausloeser.AUTOMATISCHER_STOPP }.zeitpunkt
+                    if (testSession.active) testSession.stop() else repository.stopSession(sessionId, zeitpunkt)
+                }
             }
         }
         memory.save(sessionId, verlauf)
-        planLocked(local)
-        due
+        // The stand changed through the Outbox: plan from the new one (the Sitzung is over, so nothing is planned and the ring ends).
+        planLocked(if (Ausloeser.AUTOMATISCHER_STOPP in due) repository.local.first() else local)
+        return due
     }
 
     private fun planLocked(local: ChildLocalState?) {

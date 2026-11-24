@@ -36,7 +36,8 @@ import java.time.ZoneId
  * }
  * ```
  * The public API is on [PUBLIC], the Admin-Formular on [ADMIN]. Build a second [TestServer] on the same
- * folder to simulate a restart (same database file).
+ * folder to simulate a restart (same database file). The timed events do not run on their own here: after
+ * moving the clock call `services.scheduler.runDue()` (what the loop of the real server does when a time is due).
  */
 class TestServer(dir: Path, val clock: ManualClock = ManualClock()) {
     val config = ServerConfig(
@@ -56,7 +57,7 @@ class TestServer(dir: Path, val clock: ManualClock = ManualClock()) {
             connectors += EngineConnectorBuilder().apply { host = "localhost"; port = config.port }
             connectors += EngineConnectorBuilder().apply { host = "localhost"; port = config.adminPort }
         }
-        builder.application { serverModule(config, clock, clock, services) }
+        builder.application { serverModule(config, clock, clock, services, runScheduler = false) }
     }
 
     fun client(builder: ApplicationTestBuilder): HttpClient =

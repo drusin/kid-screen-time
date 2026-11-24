@@ -14,6 +14,12 @@ enum class Ausloeser {
 
     /** Klingeln: die Restzeit ist 0, danach alle [FaelligeZeitpunkte.ALARMWIEDERHOLUNG]. */
     ALARM,
+
+    /**
+     * Die Sitzung endet ohne Zutun des Kindes: die Überziehung erreicht die Überziehungsgrenze. Der Zeitpunkt ist das
+     * Ende der Sitzung, auch wenn er schon vorbei ist (Gerät oder Server war nicht erreichbar).
+     */
+    AUTOMATISCHER_STOPP,
 }
 
 data class FaelligerZeitpunkt(val ausloeser: Ausloeser, val zeitpunkt: Instant)
@@ -40,6 +46,9 @@ data class FaelligeZeitpunkte(val liste: List<FaelligerZeitpunkt>) {
         val ALARMWIEDERHOLUNG: Duration = Duration.ofMinutes(5)
     }
 
+    /** Der Zeitpunkt des Automatischen Stopps, null wenn keine Sitzung läuft oder er nicht mehr an diesem Tag liegt. */
+    val automatischerStopp: Instant? get() = liste.firstOrNull { it.ausloeser == Ausloeser.AUTOMATISCHER_STOPP }?.zeitpunkt
+
     /** Der früheste Zeitpunkt, null wenn nichts mehr ansteht. */
     val naechster: FaelligerZeitpunkt? get() = liste.firstOrNull()
 
@@ -53,12 +62,18 @@ data class FaelligeZeitpunkte(val liste: List<FaelligerZeitpunkt>) {
  * - Vorwarnung: wenn die Restzeit die Vorwarnschwelle erreicht, sofort, wenn sie schon darunter (aber > 0) liegt;
  *   nie, wenn [verlauf] sie schon verzeichnet.
  * - Alarm: wenn die Restzeit 0 erreicht, sofort bei Restzeit 0. Danach alle 5 Minuten nach dem letzten Klingeln.
+ * - Automatischer Stopp: wenn die Überziehung die Überziehungsgrenze erreicht (Ende der Sitzung). Alles, was nicht vor
+ *   dem Stopp liegt, entfällt. Ist der Stopp schon vorbei, steht er mit seinem tatsächlichen Zeitpunkt (nicht `jetzt`) an.
  * - Zeitpunkte nach Tagesende (Mitternacht) gibt es nicht: dann gilt ein neues Tageskontingent, und die Neuplanung
  *   zu Mitternacht (Ticket 11) rechnet neu.
  */
 fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmverlauf.KEINER): FaelligeZeitpunkte {
     val stand = tagesstand(jetzt)
-    if (stand.laufendeSitzung == null) return FaelligeZeitpunkte(emptyList())
+    val sitzung = stand.laufendeSitzung ?: return FaelligeZeitpunkte(emptyList())
+
+    // Die Überziehung wächst mit der Zeit 1:1. Sie erreicht die Grenze nach (Restzeit + Grenze − bisherige Überziehung).
+    // Lag die Überziehung schon vor dem Start dieser Sitzung über der Grenze, endet die Sitzung mit ihrem Start.
+    val stopp = maxOf(jetzt + stand.restzeit - stand.ueberziehung + ueberziehungsgrenze, sitzung.start)
 
     val liste = mutableListOf<FaelligerZeitpunkt>()
     if (stand.restzeit > Duration.ZERO) {
@@ -74,5 +89,8 @@ fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmve
         val naechster = letzter?.plus(FaelligeZeitpunkte.ALARMWIEDERHOLUNG)?.takeIf { it.isAfter(jetzt) } ?: jetzt
         liste += FaelligerZeitpunkt(Ausloeser.ALARM, naechster)
     }
+    // Mit dem Stopp endet die Sitzung: danach klingelt nichts mehr.
+    liste.removeAll { it.zeitpunkt >= stopp }
+    liste += FaelligerZeitpunkt(Ausloeser.AUTOMATISCHER_STOPP, stopp)
     return FaelligeZeitpunkte(liste.filter { !it.zeitpunkt.isAfter(stand.tagesende) }.sortedBy { it.zeitpunkt })
 }
