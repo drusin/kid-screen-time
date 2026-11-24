@@ -27,7 +27,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
   - Verlauf: einfache Liste von Sitzungen und Tagesverbrauch, keine Statistik.
   - Das Kind sieht Restzeit, Start/Stopp und das heutige Kontingent, aber keine Einstellungen.
 - Stack-Präferenzen des Nutzers: kann JS/TS (Vue) und Java. Kotlin ist ok, weil Claude baut.
-- Annahme (nicht explizit bestätigt): Im Homelab gibt es einen Reverse Proxy mit TLS und eine Domain.
+- Homelab: Traefik v3 mit TLS unter `*.rusin.xyz`, Stacks in `dawid@zotacserver:~/docker` (Details in [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md)).
 
 ## Decisions so far
 
@@ -43,6 +43,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie sehen Kind- und Eltern-Oberfläche aus?](issues/08-ui-prototyp.md): Kindgerät mit Restzeit-Ring und großem Start/Stopp-Knopf (Variante A), Elterngerät als ein scrollender Bildschirm mit Status, Stepper-Tagesanpassung und Wochenvorlage-Dialog, Regeln und Geräte im ⋮-Menü (Variante B), Alarm als Vollbild, eigene Zustandsfarben
 - [Wie wird die APK gebaut, signiert und veröffentlicht?](issues/09-build-release-apk.md): GitHub Actions mit öffentlichem Repo, Release per Tag `vX.Y.Z` (versionCode aus dem Tag), JVM-Tests + Lint als Gate, Keystore im Passwortmanager + Offline-Backup + CI-Secret, Package `io.github.drusin.kidscreentime`, Google-Registrierung beim ersten Release
 - [Wie werden offline gepufferte Start- und Stopp-Ereignisse mit dem Server zusammengeführt?](issues/10-sync-offline-ereignisse.md): Sitzungs-Upsert mit Sitzungs-UUID vom Kindgerät über eine Outbox (online wie offline, Batch), Zeitpunkte als Alter über die monotone Uhr, ein Start wird nie abgelehnt, das frühere Ende gewinnt, Automatischer Stopp auch lokal geplant, keine nachgeholten Eltern-Benachrichtigungen
+- [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md): eigener Stack-Ordner in `~/docker` hinter Traefik (`kidscreentime.rusin.xyz`, `ntfy.rusin.xyz`), `/admin` auf eigenem Host-Port ohne Traefik-Route, ntfy von außen nur lesend, Config per Compose + `.env`, Image auf GHCR beim Release-Tag, Updates manuell (Server vor App)
 
 ## Not yet specified
 
@@ -57,3 +58,4 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - Automatische Erkennung der Nutzung (Bildschirmzeit wird manuell per Sitzung erfasst).
 - Statistiken und Diagramme.
 - Nachträgliches Bearbeiten, Löschen oder Nachtragen von Sitzungen durch die Eltern: für v1 bewusst ausgeschlossen (entschieden in [Wie verhalten sich Kontingent und Sitzung in den Randfällen?](issues/04-domaenenregeln-randfaelle.md)).
+- Backups der Server-Datenbank: vom Nutzer für diese Map ausgeschlossen (entschieden in [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md)).

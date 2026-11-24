@@ -28,6 +28,6 @@ Im Grilling mit dem Nutzer am 2026-11-24 entschieden.
    - Die Wochenvorlage ist mit „gültig ab“-Datum versioniert, das Tageskontingent ergibt sich aus der Version zu Tagesbeginn plus den Tagesanpassungen. So braucht es keinen Mitternachts-Job, der etwas festschreibt.
    - Tagesanpassungen werden nur angehängt.
    - Eine Sitzung ist eine Zeile mit Start, Ende (leer, solange sie läuft) und Grund für das Ende (Kind/Automatischer Stopp). Die Mitternachtsaufteilung wird beim Lesen berechnet.
-8. **Admin-Webformular:** serverseitig gerendert mit kotlinx.html im Ktor-Server unter `/admin`, ohne JS und ohne eigenen Container. Der Reverse Proxy beschränkt den Pfad auf das Heimnetz.
+8. **Admin-Webformular:** serverseitig gerendert mit kotlinx.html im Ktor-Server unter `/admin`, ohne JS und ohne eigenen Container. Der Reverse Proxy beschränkt den Pfad auf das Heimnetz. *Präzisiert in [Wie wird der Server im Homelab betrieben und gesichert?](11-deployment-homelab.md): eigener Port ohne Traefik-Route statt Pfad-Beschränkung im Proxy.*
 9. **Laufzeit:** JVM-Fat-JAR auf `eclipse-temurin:25-jre` (aktuelles LTS, Java 25). GraalVM Native wurde verworfen, weil die Builds dafür langsam und anfällig sind.
 10. **Ausgelagert:** Das Sync-Protokoll für offline gepufferte Ereignisse bekommt ein eigenes Ticket: [Wie werden offline gepufferte Start- und Stopp-Ereignisse mit dem Server zusammengeführt?](10-sync-offline-ereignisse.md). Ebenso der Betrieb im Homelab: [Wie wird der Server im Homelab betrieben und gesichert?](11-deployment-homelab.md).
