@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.shadow)
+    `java-test-fixtures`
     application
 }
 
@@ -24,7 +25,16 @@ dependencies {
     implementation(libs.sqlite.jdbc)
     implementation(libs.logback.classic)
 
-    testImplementation(testFixtures(project(":domain")))
+    // TestServer: shared with the app module's sync scenario tests (see AGENTS.md). No kotlin-test here, so that
+    // the app (JUnit 4) and the server (JUnit 5) can each bring their own.
+    testFixturesApi(testFixtures(project(":domain")))
+    testFixturesApi(libs.ktor.server.test.host)
+    testFixturesApi(libs.ktor.client.content.negotiation)
+    testFixturesApi(libs.ktor.serialization.kotlinx.json)
+    testFixturesImplementation(project(":api"))
+    testFixturesImplementation(project(":domain"))
+    testFixturesApi(project(":server"))
+
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

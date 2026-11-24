@@ -30,7 +30,7 @@ class AppContainer(
     engine: HttpClientEngine = OkHttp.create(),
     val wallClock: WallClock = SystemWallClock,
     val monotonicClock: MonotonicClock = AndroidMonotonicClock,
-    /** The one Room database. Ticket 05 adds the Outbox to it. */
+    /** The one Room database (Kind-Snapshot and Outbox). */
     val database: AppDatabase = AppDatabase.create(context),
     /** The scanner needs an Activity context, so screens build it with their own. */
     val qrScannerFactory: (Context) -> QrScanner = { GmsQrScanner(it) },
@@ -38,7 +38,7 @@ class AppContainer(
     val httpClient = createHttpClient(engine)
     val pairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context))
     val parentRepository = ParentRepository(httpClient, pairingRepository)
-    val childRepository = ChildRepository(httpClient, pairingRepository, database.childSnapshotDao(), wallClock)
+    val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock)
 
     /** Suggested name for this device during the Kopplung. */
     val defaultDeviceName: String = Build.MODEL.orEmpty()

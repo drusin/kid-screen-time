@@ -1,13 +1,17 @@
 package io.github.drusin.kidscreentime.ui
 
 import io.github.drusin.kidscreentime.api.ApiPaths
+import io.github.drusin.kidscreentime.api.ChildSyncRequest
 import io.github.drusin.kidscreentime.api.DayAdjustment
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.SessionRecord
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Zustand
+import io.github.drusin.kidscreentime.ui.child.ChildAction
 import io.github.drusin.kidscreentime.ui.child.ChildHomeViewModel
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.time.Duration
@@ -78,7 +82,8 @@ class ChildHomeViewModelTest {
         val state = viewModel.state.await { it.stand != null }
 
         val request = app.requests.single()
-        assertEquals("https://kst.example.org" + ApiPaths.CHILD_SNAPSHOT, request.url.toString())
+        assertEquals("https://kst.example.org" + ApiPaths.CHILD_SYNC, request.url.toString())
+        assertEquals(HttpMethod.Post, request.method)
         assertEquals("Bearer tok-kind", request.headers[HttpHeaders.Authorization])
         assertEquals("Mia", state.childName)
         val stand = state.stand!!
@@ -159,5 +164,119 @@ class ChildHomeViewModelTest {
 
         assertNull(state.stand)
         assertTrue(state.offline)
+    }
+
+    // Ticket 05: Sitzung starten und stoppen
+
+    private fun syncRequest(request: io.ktor.client.request.HttpRequestData): ChildSyncRequest =
+        kotlinx.serialization.json.Json.decodeFromString(ChildSyncRequest.serializer(), (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString())
+
+    @Test
+    fun `Vor dem Start zeigt der Knopf Start, und der Start erscheint sofort aus dem lokalen Stand, auch ohne Server`() = runTest {
+        val viewModel = viewModel()
+        viewModel.state.await { it.stand != null }
+        assertEquals(ChildAction.START, viewModel.state.value.action)
+        app.handler = { throw IOException("offline") }
+
+        viewModel.onAction()
+
+        val state = viewModel.state.await { it.action == ChildAction.STOP }
+        assertEquals(Zustand.LAEUFT, state.stand!!.zustand)
+        assertNotNull(state.stand!!.laufendeSitzung)
+        assertEquals(1, app.database.outboxDao().all().size, "Der Start liegt in der Outbox")
+    }
+
+    @Test
+    fun `Der Start löst sofort einen Sync aus, der die Sitzungs-UUID und das Alter überträgt`() = runTest {
+        val viewModel = viewModel()
+        viewModel.state.await { it.stand != null }
+        app.requests.clear()
+
+        viewModel.onAction()
+
+        viewModel.state.await { it.action == ChildAction.STOP }
+        val sync = kotlin.run { while (app.requests.isEmpty()) kotlinx.coroutines.yield(); app.requests.single() }
+        assertEquals("https://kst.example.org" + ApiPaths.CHILD_SYNC, sync.url.toString())
+        val session = syncRequest(sync).sessions.single()
+        assertEquals(0, session.startAgeMillis)
+        assertNull(session.endAgeMillis)
+        assertTrue(java.util.UUID.fromString(session.id).toString() == session.id)
+    }
+
+    @Test
+    fun `Der Stopp lässt die Restzeit für später stehen und der Knopf zeigt wieder Start`() = runTest {
+        val viewModel = viewModel()
+        viewModel.state.await { it.stand != null }
+        app.handler = { throw IOException("offline") }
+        viewModel.onAction()
+        viewModel.state.await { it.action == ChildAction.STOP }
+
+        app.clock.advance(Duration.ofMinutes(20))
+        viewModel.tick()
+        assertEquals(Duration.ofMinutes(40), viewModel.state.value.stand!!.restzeit)
+        viewModel.onAction()
+
+        val state = viewModel.state.await { it.action == ChildAction.START }
+        app.clock.advance(Duration.ofMinutes(30))
+        viewModel.tick()
+        assertEquals(Zustand.BEREIT, viewModel.state.value.stand!!.zustand)
+        assertEquals(Duration.ofMinutes(40), viewModel.state.value.stand!!.restzeit, "Nach dem Stopp läuft nichts weiter")
+        assertNull(state.stand!!.laufendeSitzung)
+        val row = app.database.outboxDao().all().single()
+        assertNotNull(row.endWallMillis, "Der Stopp bringt seinen Start mit: eine Zeile mit Start und Ende")
+        val ages = syncRequest(app.requests.last()).sessions.single()
+        assertEquals(20 * minute, ages.startAgeMillis - ages.endAgeMillis!!)
+    }
+
+    @Test
+    fun `Bei Restzeit 0 ist der Knopf deaktiviert und ein Druck startet nichts`() = runTest {
+        val now = app.clock.now()
+        serve(testChildSnapshot(now, sessions = listOf(SessionRecord("s1", now.toEpochMilli() - 90 * minute, now.toEpochMilli() - 30 * minute))))
+        val viewModel = viewModel()
+        val state = viewModel.state.await { it.stand != null }
+        assertEquals(ChildAction.NO_TIME_LEFT, state.action)
+        assertEquals(Zustand.AUFGEBRAUCHT, state.stand!!.zustand)
+        app.requests.clear()
+
+        viewModel.onAction()
+
+        assertTrue(app.database.outboxDao().all().isEmpty())
+        assertTrue(app.requests.isEmpty())
+    }
+
+    @Test
+    fun `Die Zustände während der Sitzung sind läuft, gleich vorbei und drüber, und gestoppt wird auch in der Überziehung`() = runTest {
+        val now = app.clock.now()
+        serve(testChildSnapshot(now, sessions = listOf(SessionRecord("s1", now.toEpochMilli() - 10 * minute))))
+        val viewModel = viewModel()
+        viewModel.state.await { it.stand != null }
+        app.handler = { throw IOException("offline") }
+        assertEquals(Zustand.LAEUFT, viewModel.state.value.stand!!.zustand)
+        assertEquals(ChildAction.STOP, viewModel.state.value.action)
+
+        app.clock.advance(Duration.ofMinutes(46))
+        viewModel.tick()
+        assertEquals(Zustand.VORWARNUNG, viewModel.state.value.stand!!.zustand)
+
+        app.clock.advance(Duration.ofMinutes(10))
+        viewModel.tick()
+        val overrun = viewModel.state.value
+        assertEquals(Zustand.UEBERZIEHUNG, overrun.stand!!.zustand)
+        assertEquals(Duration.ofMinutes(6), overrun.stand!!.ueberziehung)
+        assertEquals(ChildAction.STOP, overrun.action)
+
+        viewModel.onAction()
+        val stopped = viewModel.state.await { it.stand?.laufendeSitzung == null && it.stand != null }
+        assertEquals(Zustand.AUFGEBRAUCHT, stopped.stand!!.zustand)
+        assertEquals(ChildAction.NO_TIME_LEFT, stopped.action)
+    }
+
+    @Test
+    fun `Ohne Stand gibt es keinen Knopf`() = runTest {
+        app.handler = { throw IOException("offline") }
+
+        val state = viewModel().state.await { !it.loading }
+
+        assertEquals(ChildAction.UNAVAILABLE, state.action)
     }
 }

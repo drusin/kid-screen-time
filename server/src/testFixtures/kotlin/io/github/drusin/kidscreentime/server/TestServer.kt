@@ -23,10 +23,9 @@ import io.ktor.server.engine.EngineConnectorBuilder
 import io.ktor.server.testing.ApplicationTestBuilder
 import java.nio.file.Path
 import java.time.ZoneId
-import kotlin.test.assertEquals
 
 /**
- * Test setup for the server HTTP API: a real SQLite file in a temp folder, one [ManualClock] for both clocks.
+ * Test setup for the server HTTP API (a test fixture of `server`, also used by the app's sync scenario tests): a real SQLite file in a temp folder, one [ManualClock] for both clocks.
  * Reuse it in every server test:
  *
  * ```
@@ -83,7 +82,7 @@ suspend fun TestServer.pairDevice(
         DeviceRole.CHILD -> services.pairing.createCode(DeviceRole.CHILD, newChildName = "Mia")
     }.code
     val response = client.redeem(code, name)
-    assertEquals(HttpStatusCode.OK, response.status)
+    check(response.status == HttpStatusCode.OK) { "Kopplung fehlgeschlagen: ${response.status}" }
     return response.body()
 }
 

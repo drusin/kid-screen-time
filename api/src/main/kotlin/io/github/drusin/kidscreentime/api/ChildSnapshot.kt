@@ -65,3 +65,15 @@ data class ChildSnapshot(
     val todaySessions: List<SessionRecord> = emptyList(),
     val todayAdjustments: List<DayAdjustment> = emptyList(),
 )
+
+/**
+ * The whole state of one Sitzung as the Kindgerät knows it (an upsert, never an event): [id] is the UUID the device
+ * made at the start. Points in time are sent as age, measured with the monotonic clock at the moment of sending; the
+ * server calculates "server time at receipt − age". A stop always brings its start with it ([endAgeMillis] set).
+ */
+@Serializable
+data class SessionUpdate(val id: String, val startAgeMillis: Long, val endAgeMillis: Long? = null)
+
+/** Body of the sync (`POST` [ApiPaths.CHILD_SYNC]): the open Sitzungen of the Outbox, in start order. May be empty. */
+@Serializable
+data class ChildSyncRequest(val sessions: List<SessionUpdate> = emptyList())

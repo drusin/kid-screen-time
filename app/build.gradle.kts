@@ -94,6 +94,8 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
 
     testImplementation(testFixtures(project(":domain")))
+    // Sync scenario tests run the real server in the test host (see AGENTS.md).
+    testImplementation(testFixtures(project(":server")))
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.client.mock)

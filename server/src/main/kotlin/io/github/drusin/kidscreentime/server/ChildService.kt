@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.api.ChildStatus
 import io.github.drusin.kidscreentime.api.DayAdjustment
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.api.RunningSession
+import io.github.drusin.kidscreentime.api.SessionUpdate
 import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.api.SessionRecord
 import io.github.drusin.kidscreentime.api.WeeklyTemplateVersion
@@ -85,10 +86,73 @@ class ChildService(
             st.executeQuery().use { if (it.next()) it.getString(1) else null }
         }
 
+    /**
+     * The sync of a Kindgerät: upserts the Sitzungen of its Outbox and returns the complete Kind-Snapshot, all in
+     * one transaction. A Sitzung is a fact: nothing is rejected because of the Restzeit (the Kindgerät checks that).
+     * Rules per [SessionUpdate]:
+     * - Times are "now − age" with now = server time at receipt, never in the future.
+     * - An unknown id creates the Sitzung. For a known one the start stays (a repeated batch changes nothing).
+     * - The earlier end wins: a stop for an already ended Sitzung (e.g. after an Automatischer Stopp) changes nothing.
+     */
+    fun sync(childId: String, updates: List<SessionUpdate>): SyncResult {
+        val invalid = updates.firstOrNull { runCatching { UUID.fromString(it.id) }.isFailure }
+        if (invalid != null) return SyncResult.Invalid("Ungültige Sitzungs-ID: ${invalid.id}")
+        val now = wallClock.now()
+        return try {
+            database.transaction { c ->
+                for (update in updates.sortedBy { -it.startAgeMillis }) {
+                    if (!upsert(c, childId, update, now)) throw ForeignSessionException()
+                }
+                val snapshot = checkNotNull(snapshot(c, childId, now)) { "Das Kind des Kindgeräts fehlt" }
+                SyncResult.Synced(snapshot)
+            }
+        } catch (_: ForeignSessionException) {
+            // Thrown inside the transaction on purpose: everything of this batch is rolled back.
+            SyncResult.ForeignSession
+        }
+    }
+
+    private class ForeignSessionException : RuntimeException()
+
+    /** Returns false when the id belongs to a Sitzung of another Kind. */
+    private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant): Boolean {
+        val start = now.minusMillis(update.startAgeMillis.coerceAtLeast(0))
+        val existing = c.prepareStatement("SELECT child_id, end_at FROM sessions WHERE id = ?").use { st ->
+            st.setString(1, update.id)
+            st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) to rs.getLong(2).takeUnless { rs.wasNull() } else null }
+        }
+        if (existing == null) {
+            c.prepareStatement("INSERT INTO sessions (id, child_id, start_at) VALUES (?,?,?)").use {
+                it.setString(1, update.id)
+                it.setString(2, childId)
+                it.setLong(3, start.toEpochMilli())
+                it.executeUpdate()
+            }
+        } else if (existing.first != childId) {
+            return false
+        }
+        val endAge = update.endAgeMillis
+        if (endAge != null && (existing == null || existing.second == null)) {
+            c.prepareStatement(
+                // The end never lies before the start, whichever start the Sitzung really has.
+                "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = 'STOPPED' WHERE id = ? AND end_at IS NULL",
+            ).use {
+                it.setLong(1, now.minusMillis(endAge.coerceAtLeast(0)).toEpochMilli())
+                it.setString(2, update.id)
+                it.executeUpdate()
+            }
+        }
+        return true
+    }
+
     /** The complete Kind-Snapshot for the Kindgerät of [childId]. */
     fun childSnapshot(childId: String): ChildSnapshot? {
         val now = wallClock.now()
-        val loaded = database.transaction { c -> load(c, childId, now) } ?: return null
+        return database.transaction { c -> snapshot(c, childId, now) }
+    }
+
+    private fun snapshot(c: Connection, childId: String, now: Instant): ChildSnapshot? {
+        val loaded = load(c, childId, now) ?: return null
         val tag = now.atZone(zone).toLocalDate()
         val stand = loaded.stand
         return ChildSnapshot(
@@ -232,4 +296,13 @@ private fun Wochenvorlage.dtoFor(tag: LocalDate): WeeklyTemplateVersion {
         validFrom = (version?.gueltigAb ?: LocalDate.EPOCH).toString(),
         minutes = DayOfWeek.entries.map { version?.minuten?.getValue(it) ?: 0 },
     )
+}
+
+sealed interface SyncResult {
+    data class Synced(val snapshot: ChildSnapshot) : SyncResult
+
+    data class Invalid(val reason: String) : SyncResult
+
+    /** The id belongs to a Sitzung of another Kind: a Kindgerät may only upsert the Sitzungen of its own Kind. */
+    data object ForeignSession : SyncResult
 }

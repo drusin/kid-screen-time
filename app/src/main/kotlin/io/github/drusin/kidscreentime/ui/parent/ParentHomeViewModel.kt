@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 data class ParentHomeUiState(
     val loading: Boolean = true,
     val children: List<ParentChildSnapshot> = emptyList(),
+    /** Familien-Zeitzone (IANA id) from the snapshot, for times on the Status-Karte. */
+    val timeZone: String? = null,
     /** The Eltern-Snapshot could not be loaded. The ticket 17 cache will show the last known state instead. */
     val unavailable: Boolean = false,
 ) {
@@ -36,7 +38,7 @@ class ParentHomeViewModel(private val repository: ParentRepository) : ViewModel(
             val result = repository.loadSnapshot()
             _state.update {
                 when (result) {
-                    is SnapshotResult.Loaded -> ParentHomeUiState(loading = false, children = result.snapshot.children)
+                    is SnapshotResult.Loaded -> ParentHomeUiState(loading = false, children = result.snapshot.children, timeZone = result.snapshot.timeZone)
                     SnapshotResult.Unauthorized, SnapshotResult.Unavailable -> it.copy(loading = false, unavailable = true)
                 }
             }

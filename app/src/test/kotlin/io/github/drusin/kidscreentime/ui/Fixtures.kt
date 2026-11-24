@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.AppContainer
 import io.github.drusin.kidscreentime.db.AppDatabase
 import io.github.drusin.kidscreentime.domain.clock.ManualClock
 import io.github.drusin.kidscreentime.pairing.FakeTokenStore
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
@@ -26,18 +27,21 @@ import kotlinx.coroutines.withTimeout
  * answers the test sets through [handler], a [ManualClock] for both clocks and an in-memory Room database.
  * Reuse it for later screens.
  */
-class TestContainer {
+class TestContainer(
+    /** Wall and monotonic clock of the container. Advance it, never wait. A sync scenario shares the server's clock. */
+    val clock: ManualClock = ManualClock(),
+    /** Replaces the MockEngine, e.g. by an engine that forwards to the real server (see `SyncScenario`). */
+    engine: HttpClientEngine? = null,
+) {
     val requests = mutableListOf<HttpRequestData>()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
 
-    /** Wall and monotonic clock of the container. Advance it, never wait. */
-    val clock = ManualClock()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     val database: AppDatabase = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
     val container = AppContainer(
         context = context,
         tokenStore = FakeTokenStore(),
-        engine = MockEngine { request -> requests += request; handler(request) },
+        engine = engine ?: MockEngine { request -> requests += request; handler(request) },
         wallClock = clock,
         monotonicClock = clock,
         database = database,

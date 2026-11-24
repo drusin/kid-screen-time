@@ -2,6 +2,7 @@ package io.github.drusin.kidscreentime.server
 
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.DeviceRole
+import io.github.drusin.kidscreentime.api.ChildSyncRequest
 import io.github.drusin.kidscreentime.api.ErrorResponse
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
@@ -108,14 +109,25 @@ fun Route.apiRoutes(services: ServerServices) {
         )
     }
 
-    authenticatedGet(ApiPaths.CHILD_SNAPSHOT, services, DeviceRole.CHILD) { device ->
-        val snapshot = device.childId?.let(services.children::childSnapshot)
-        if (snapshot == null) call.respond(HttpStatusCode.Unauthorized) else call.respond(snapshot)
+    // The sync of the Kindgerät: upserts the Sitzungen of its Outbox, answers with the complete Kind-Snapshot.
+    authenticatedPost(ApiPaths.CHILD_SYNC, services, DeviceRole.CHILD) { device ->
+        val childId = device.childId
+        if (childId == null) {
+            call.respond(HttpStatusCode.Unauthorized)
+            return@authenticatedPost
+        }
+        val request = call.receive<ChildSyncRequest>()
+        when (val result = services.children.sync(childId, request.sessions)) {
+            is SyncResult.Synced -> call.respond(result.snapshot)
+            is SyncResult.Invalid -> call.respond(HttpStatusCode.BadRequest, ErrorResponse(result.reason))
+            SyncResult.ForeignSession -> call.respond(HttpStatusCode.Forbidden, ErrorResponse("Die Sitzung gehört zu einem anderen Kind"))
+        }
     }
 }
 
 private fun parentSnapshot(services: ServerServices) = ParentSnapshot(
     serverTimeEpochMillis = services.wallClock.now().toEpochMilli(),
+    timeZone = services.config.familyZone.id,
     devices = services.devices.listActive(),
     children = services.children.parentChildren(),
 )

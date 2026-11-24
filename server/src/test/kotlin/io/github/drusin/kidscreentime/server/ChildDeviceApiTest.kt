@@ -3,6 +3,7 @@ package io.github.drusin.kidscreentime.server
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.ChildSnapshot
 import io.github.drusin.kidscreentime.api.ChildState
+import io.github.drusin.kidscreentime.api.ChildSyncRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.DeviceRole
@@ -46,11 +47,19 @@ class ChildDeviceApiTest {
     private suspend fun HttpClient.getAs(token: String?, path: String): HttpResponse =
         get(TestServer.PUBLIC + path) { token?.let { header("Authorization", "Bearer $it") } }
 
+    /** The sync without anything in the Outbox: the way to read the Kind-Snapshot. */
+    private suspend fun HttpClient.syncAs(token: String?, request: ChildSyncRequest = ChildSyncRequest()): HttpResponse =
+        post(TestServer.PUBLIC + ApiPaths.CHILD_SYNC) {
+            token?.let { header("Authorization", "Bearer $it") }
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+
     private suspend fun HttpClient.parentSnapshot(parent: RedeemPairingCodeResponse) =
         getAs(parent.deviceToken, ApiPaths.PARENT_SNAPSHOT).body<ParentSnapshot>()
 
     private suspend fun HttpClient.childSnapshot(child: RedeemPairingCodeResponse) =
-        getAs(child.deviceToken, ApiPaths.CHILD_SNAPSHOT).body<ChildSnapshot>()
+        syncAs(child.deviceToken).body<ChildSnapshot>()
 
     /** The Elterngerät creates the code for a new Kind and the tablet redeems it. */
     private suspend fun TestServer.pairChildDevice(client: HttpClient, parent: RedeemPairingCodeResponse, kind: String = "Mia"): RedeemPairingCodeResponse {
@@ -212,12 +221,12 @@ class ChildDeviceApiTest {
     }
 
     @Test
-    fun `Ein Elterngerät-Token bekommt am Kind-Snapshot 403`() = testApplication {
+    fun `Ein Elterngerät-Token bekommt am Kind-Sync 403`() = testApplication {
         val server = TestServer(dir).also { it.install(this) }
         val client = server.client(this)
         val parent = server.pairDevice(client, DeviceRole.PARENT)
 
-        assertEquals(HttpStatusCode.Forbidden, client.getAs(parent.deviceToken, ApiPaths.CHILD_SNAPSHOT).status)
+        assertEquals(HttpStatusCode.Forbidden, client.syncAs(parent.deviceToken).status)
     }
 
     @Test
@@ -227,8 +236,8 @@ class ChildDeviceApiTest {
         val parent = server.pairDevice(client, DeviceRole.PARENT)
         val child = server.pairChildDevice(client, parent)
 
-        assertEquals(HttpStatusCode.Unauthorized, client.getAs(null, ApiPaths.CHILD_SNAPSHOT).status)
-        assertEquals(HttpStatusCode.Unauthorized, client.getAs("falsch", ApiPaths.CHILD_SNAPSHOT).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.syncAs(null).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.syncAs("falsch").status)
         assertEquals(
             HttpStatusCode.Unauthorized,
             client.post(TestServer.PUBLIC + ApiPaths.PARENT_PAIRING_CODES) {
@@ -239,7 +248,7 @@ class ChildDeviceApiTest {
         server.services.database.transaction { c ->
             c.createStatement().use { it.execute("UPDATE devices SET unpaired_at = 1 WHERE id = '${child.deviceId}'") }
         }
-        assertEquals(HttpStatusCode.Unauthorized, client.getAs(child.deviceToken, ApiPaths.CHILD_SNAPSHOT).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.syncAs(child.deviceToken).status)
     }
 
     @Test
@@ -288,7 +297,7 @@ class ChildDeviceApiTest {
 
         assertEquals(HttpStatusCode.Conflict, client.redeem(created.code, "Zweites Tablet").status)
 
-        assertEquals(HttpStatusCode.OK, client.getAs(child.deviceToken, ApiPaths.CHILD_SNAPSHOT).status)
+        assertEquals(HttpStatusCode.OK, client.syncAs(child.deviceToken).status)
         assertEquals(2, client.parentSnapshot(parent).devices.size)
     }
 

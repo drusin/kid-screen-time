@@ -1,5 +1,10 @@
 package io.github.drusin.kidscreentime.ui.child
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,10 +12,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -21,9 +28,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -69,11 +79,12 @@ fun ChildHomeScreen(viewModel: ChildHomeViewModel) {
                 stand != null -> {
                     Ring(stand)
                     Allowance(stand)
+                    ActionButton(state.action, stand.zustand, viewModel::onAction)
                 }
                 state.loading -> CircularProgressIndicator()
                 else -> {
                     Text(stringResource(R.string.child_no_snapshot), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                    Button(onClick = viewModel::refresh) { Text(stringResource(R.string.retry)) }
+                    Button(onClick = viewModel::sync) { Text(stringResource(R.string.retry)) }
                 }
             }
             if (state.offline && stand != null) {
@@ -95,8 +106,15 @@ private fun Ring(stand: Tagesstand) {
     val total = stand.tageskontingent.gesamt.toMillis()
     val progress = if (total == 0L) 0f else (stand.restzeit.toMillis().toFloat() / total).coerceIn(0f, 1f)
     val overrun = stand.zustand == Zustand.UEBERZIEHUNG
+    // In the Überziehung the ring pulses red.
+    val pulse = rememberInfiniteTransition(label = "pulse").animateFloat(
+        initialValue = 1f,
+        targetValue = if (overrun) 0.35f else 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 800), RepeatMode.Reverse),
+        label = "pulse",
+    )
     Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize().alpha(if (overrun) pulse.value else 1f)) {
             val stroke = 24.dp.toPx()
             val inset = stroke / 2
             val arcSize = Size(size.width - stroke, size.height - stroke)
@@ -110,6 +128,30 @@ private fun Ring(stand: Tagesstand) {
             )
             Text(text = stateWord(stand.zustand), style = MaterialTheme.typography.titleLarge, color = color)
         }
+    }
+}
+
+/** The wide Start/Stopp button in the colour of the state. At Restzeit 0 without Sitzung it is disabled. */
+@Composable
+private fun ActionButton(action: ChildAction, zustand: Zustand, onClick: () -> Unit) {
+    if (action == ChildAction.UNAVAILABLE) return
+    val color = stateColor(zustand)
+    Button(
+        onClick = onClick,
+        enabled = action != ChildAction.NO_TIME_LEFT,
+        modifier = Modifier.fillMaxWidth().height(72.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = if (color.luminance() > 0.5f) Color.Black else Color.White),
+    ) {
+        Text(
+            stringResource(
+                when (action) {
+                    ChildAction.START -> R.string.child_action_start
+                    ChildAction.STOP -> R.string.child_action_stop
+                    else -> R.string.child_action_no_time
+                },
+            ),
+            style = MaterialTheme.typography.titleLarge,
+        )
     }
 }
 

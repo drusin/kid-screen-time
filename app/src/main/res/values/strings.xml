@@ -37,6 +37,10 @@
     <string name="child_allowance_today">Heute: %1$s</string>
     <string name="child_allowance_breakdown">Wochenvorlage %1$s, Anpassung %2$s</string>
     <string name="child_used_today">Heute genutzt: %1$s</string>
+    <string name="child_action_start">Start</string>
+    <string name="child_action_stop">Stopp</string>
+    <string name="child_action_no_time">Keine Zeit mehr übrig</string>
+    <string name="parent_status_running_since">Sitzung läuft seit %1$s Uhr</string>
     <string name="parent_status_remaining">%1$s übrig</string>
     <string name="parent_status_overrun">%1$s drüber</string>
     <string name="parent_status_used">%1$s von %2$s genutzt</string>

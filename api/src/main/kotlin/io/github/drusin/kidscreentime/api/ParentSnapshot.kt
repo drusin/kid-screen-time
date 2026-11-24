@@ -32,6 +32,8 @@ data class ParentChildSnapshot(
 @Serializable
 data class ParentSnapshot(
     val serverTimeEpochMillis: Long,
+    /** The Familien-Zeitzone (IANA id), for showing times such as "Sitzung läuft seit …". */
+    val timeZone: String? = null,
     val devices: List<DeviceInfo>,
     val children: List<ParentChildSnapshot> = emptyList(),
 )

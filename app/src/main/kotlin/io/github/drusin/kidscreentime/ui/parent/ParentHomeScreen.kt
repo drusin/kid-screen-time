@@ -30,6 +30,10 @@ import io.github.drusin.kidscreentime.ui.signedMinutesText
 import io.github.drusin.kidscreentime.ui.stateWord
 import io.github.drusin.kidscreentime.ui.theme.stateColor
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import io.github.drusin.kidscreentime.ui.toMinutesRoundedUp
 
 /** Eltern-Startseite: the Status-Karte of the Kind (or the hint that none is paired yet) and the way to pair a device. */
@@ -54,7 +58,7 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onPairDevice: () -> Unit) {
                 Text(stringResource(R.string.parent_home_no_child_title), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.parent_home_no_child_hint), style = MaterialTheme.typography.bodyLarge)
             } else {
-                state.children.forEach { StatusCard(it) }
+                state.children.forEach { StatusCard(it, state.timeZone) }
             }
             if (state.unavailable) {
                 Text(stringResource(R.string.parent_home_unavailable), color = MaterialTheme.colorScheme.error)
@@ -65,7 +69,7 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onPairDevice: () -> Unit) {
 
 /** Status-Karte: remaining time, progress bar and the breakdown of the Tageskontingent, as the server calculated it. */
 @Composable
-private fun StatusCard(child: ParentChildSnapshot) {
+private fun StatusCard(child: ParentChildSnapshot, timeZone: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(child.name, style = MaterialTheme.typography.titleLarge)
@@ -82,6 +86,13 @@ private fun StatusCard(child: ParentChildSnapshot) {
                 color = color,
             )
             Text(stateWord(status.state), style = MaterialTheme.typography.titleMedium, color = color)
+            val running = status.runningSession
+            if (running != null && timeZone != null) {
+                Text(
+                    stringResource(R.string.parent_status_running_since, DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY).format(Instant.ofEpochMilli(running.startEpochMillis).atZone(ZoneId.of(timeZone)))),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
             LinearProgressIndicator(progress = { status.usedFraction() }, color = color, modifier = Modifier.fillMaxWidth())
             Text(
                 stringResource(R.string.parent_status_used, minutesText(Duration.ofMillis(status.usedMillis).toMinutesRoundedUp()), minutesText(status.allowance.totalMinutes)),
