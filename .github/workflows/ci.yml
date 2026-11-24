@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Test names contain umlauts; the Kotlin compiler needs a UTF-8 locale for those file/class names.
+  LC_ALL: C.UTF-8
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
