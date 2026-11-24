@@ -48,6 +48,10 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Merkt der Server, wenn das Kindgerät verstummt, und wie erfahren es die Eltern?](issues/13-lebenszeichen-kindgeraet.md): kein eigenes Lebenszeichen, „zuletzt gesehen“ nur aus normalen Syncs, Kindgerät meldet fehlende Checklisten-Punkte bei jedem Sync, einmalige Eltern-Benachrichtigung pro Übergang zu „etwas fehlt“ plus rote Anzeige
 - [Wie wird getestet, insbesondere das Alarmverhalten?](issues/14-teststrategie.md): alle Ebenen automatisch im JVM-Gate (`domain`, Server mit echter SQLite, Sync-Szenarien, Robolectric für die Alarmplanung), injizierte Uhr als Pflicht, Alarm und Push-Weg per manueller Checkliste am echten Samsung-Tablet nur bei relevanten Änderungen, keine instrumentierten Tests
 
+## Spec
+
+- [Spezifikation v1: Bildschirmzeit-App](issues/15-spezifikation-v1.md) (`ready-for-agent`)
+
 ## Not yet specified
 
 <!-- leer: die letzten Fog-Bereiche sind zu Tickets geworden -->
