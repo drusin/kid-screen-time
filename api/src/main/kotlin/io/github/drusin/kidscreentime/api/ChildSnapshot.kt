@@ -40,6 +40,8 @@ data class SessionRecord(
     val startEpochMillis: Long,
     val endEpochMillis: Long? = null,
     val endReason: SessionEndReason? = null,
+    /** The server learned of the start only with a delay ("offline erfasst", Sync-Protokoll). */
+    val recordedOffline: Boolean = false,
 )
 
 /** A Tagesanpassung of today. */

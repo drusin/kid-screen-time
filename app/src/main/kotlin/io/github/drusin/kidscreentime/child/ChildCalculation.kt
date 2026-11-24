@@ -33,15 +33,21 @@ fun ChildSnapshot.toKindStand(pending: List<PendingSession> = emptyList()): Kind
 )
 
 /**
- * The Sitzungen of the snapshot with the Outbox on top. Like at the server the earlier end wins: a Sitzung the
- * snapshot shows as ended (for example after an Automatischer Stopp) stays as the server has it. A Sitzung that is
- * still open in the snapshot is replaced by its Outbox version (the Stopp pressed here); a new one is added.
+ * The Sitzungen of the snapshot with the Outbox on top. Like at the server the earlier end wins, in time: a Sitzung
+ * the snapshot shows as ended (for example after an Automatischer Stopp) stays as the server has it, unless the
+ * Outbox ends it earlier (the child stopped offline before the server did). A Sitzung that is still open in the
+ * snapshot is replaced by its Outbox version (the Stopp pressed here); a new one is added.
  */
 private fun ChildSnapshot.sessionsWith(pending: List<PendingSession>): List<Sitzung> {
     val fromServer = todaySessions.map { it.toDomain() }
-    val endedAtServer = fromServer.filter { it.ende != null }.map { it.id }.toSet()
-    val replaced = pending.map { it.id }.toSet() - endedAtServer
-    val fromOutbox = pending.filter { it.id !in endedAtServer }.map { it.toDomain() }
+    val endAtServer = fromServer.mapNotNull { s -> s.ende?.let { s.id to it.zeitpunkt } }.toMap()
+    // Outbox wins when the server has no end yet or this device ended the Sitzung earlier.
+    val fromOutbox = pending.map { it.toDomain() }.filter { p ->
+        val serverEnd = endAtServer[p.id]
+        val end = p.ende?.zeitpunkt
+        serverEnd == null || (end != null && end.isBefore(serverEnd))
+    }
+    val replaced = fromOutbox.map { it.id }.toSet()
     return (fromServer.filter { it.id !in replaced } + fromOutbox).sortedBy { it.start }
 }
 

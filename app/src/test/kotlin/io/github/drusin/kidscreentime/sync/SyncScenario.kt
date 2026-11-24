@@ -83,7 +83,7 @@ class SyncScenario(
     val child: Device get() = devices.last()
 
     /** Creates another device of the app on the same server and clock (not paired yet). */
-    fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE): Device {
+    fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null): Device {
         val engine = MockEngine { request ->
             requests += "${request.method.value} ${request.url.encodedPath}"
             if (!online) throw IOException("kein Netz")
@@ -99,18 +99,21 @@ class SyncScenario(
             }
             respond(answer.readRawBytes(), answer.status, headersOf(HttpHeaders.ContentType, answer.headers[HttpHeaders.ContentType] ?: "application/json"))
         }
-        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects)).also { devices += it }
+        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { devices += it }
     }
 
     /** Creates a device and pairs it as the Kindgerät of a new Kind "Mia" (or of [childId] when given). */
-    suspend fun pairChildDevice(childId: String? = null, alarmEffects: AlarmEffects = AlarmEffects.NONE): Device {
-        val device = device(alarmEffects)
+    suspend fun pairChildDevice(childId: String? = null, alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null): Device {
+        val device = device(alarmEffects, syncRetry)
         val code = if (childId == null) server.services.pairing.createCode(DeviceRole.CHILD, newChildName = "Mia")
         else server.services.pairing.createCode(DeviceRole.CHILD, childId = childId)
         device.app.container.pairingRepository.pair(TestServer.PUBLIC, code.code, "Tablet")
         device.childId = (device.app.container.pairingRepository.state.value as io.github.drusin.kidscreentime.pairing.DeviceState.Paired).device.childId
         return device
     }
+
+    /** The device restarts: wall clock runs on, the monotonic clock of every device starts at zero again. */
+    fun reboot(downtime: Duration) = server.clock.reboot(downtime)
 
     /** Time passes for server and app alike. */
     fun advance(duration: Duration) = server.clock.advance(duration)
@@ -138,6 +141,9 @@ class SyncScenario(
     /** The server's own view of the Kind of [child], as the sync would deliver it. */
     fun serverSnapshot(): ChildSnapshot =
         checkNotNull(server.services.children.childSnapshot(checkNotNull(child.childId))) { "Kind fehlt" }
+
+    /** Whether the server marked the Sitzung "offline erfasst". */
+    fun serverRecordedOffline(id: String): Boolean = serverSnapshot().todaySessions.single { it.id == id }.recordedOffline
 
     /** A row of the server's `sessions` table: start, end, end reason. */
     fun serverSession(id: String): Triple<Long, Long?, String?> = server.services.database.transaction { c ->

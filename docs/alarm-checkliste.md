@@ -24,6 +24,7 @@ Es gibt keine instrumentierten Tests und keine Emulator-Läufe. Was nur am Gerä
 9. **Push-Weg** (ab Ticket 13): Tagesanpassung am Elterngerät buchen. Sie kommt in wenigen Sekunden am Tablet an, der Alarmkern plant neu (Bonus bei klingelndem Alarm lässt ihn verstummen, Abzug unter den Verbrauch lässt ihn sofort klingeln).
 10. **Automatischer Stopp** (Ticket 07): Sitzung bis zur Überziehungsgrenze laufen lassen (Debug: Testsitzung, 2 min Kontingent plus Überziehungsgrenze). Die Sitzung endet am Tablet ohne Zutun, der Alarm hört auf, das Vollbild schließt. Auch mit ausgeschaltetem WLAN prüfen; danach WLAN an: am Server steht „Automatisch gestoppt“ mit dem Ende zur Grenze.
 11. **Nächster Wecker.** In der Uhr-App zeigt das Tablet während einer Sitzung den nächsten geplanten Zeitpunkt als „nächster Wecker“ (so sieht man, dass `setAlarmClock` geplant ist).
+12. **Offline und Neustart** (Ticket 08): WLAN aus, am Kind-Bildschirm Start (die Anzeige „Server nicht erreichbar · gerechnet mit dem Stand von …“ erscheint), Tablet neu starten, WLAN an, ohne die App zu öffnen. Der WorkManager-Job liefert die Sitzung: am Server steht der Start zum richtigen Zeitpunkt, markiert als „offline erfasst“. Dasselbe mit Entsperren statt Job: WLAN an, Bildschirm sperren und entsperren, der Sync läuft.
 
 ## Durchgänge
 

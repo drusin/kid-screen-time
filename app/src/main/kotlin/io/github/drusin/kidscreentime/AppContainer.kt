@@ -26,6 +26,8 @@ import io.github.drusin.kidscreentime.push.PushRepository
 import io.github.drusin.kidscreentime.push.PushStorage
 import io.github.drusin.kidscreentime.qr.GmsQrScanner
 import io.github.drusin.kidscreentime.qr.QrScanner
+import io.github.drusin.kidscreentime.sync.SyncRetry
+import io.github.drusin.kidscreentime.sync.WorkManagerSyncRetry
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
@@ -51,11 +53,13 @@ class AppContainer(
     val alarmEffects: AlarmEffects = AndroidAlarmEffects(context),
     /** The debug build's local test Sitzung; release has none. */
     val testSession: TestSession = createTestSession(context, wallClock),
+    /** Repeats a failed sync (WorkManager). Tests record instead. */
+    val syncRetry: SyncRetry = WorkManagerSyncRetry(context),
 ) {
     val httpClient = createHttpClient(engine)
     val pairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context))
     val parentRepository = ParentRepository(httpClient, pairingRepository)
-    val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock)
+    val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry)
     val pushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
     val pushHandler = PushHandler(pairingRepository, childRepository)
 

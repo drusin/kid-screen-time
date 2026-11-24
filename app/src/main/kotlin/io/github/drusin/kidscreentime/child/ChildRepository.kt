@@ -12,6 +12,7 @@ import io.github.drusin.kidscreentime.domain.clock.MonotonicClock
 import io.github.drusin.kidscreentime.domain.clock.WallClock
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.pairing.PairingRepository
+import io.github.drusin.kidscreentime.sync.SyncRetry
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -61,6 +62,8 @@ class ChildRepository(
     private val database: AppDatabase,
     private val wallClock: WallClock,
     private val monotonicClock: MonotonicClock,
+    /** Repeats a failed sync when the network is back (WorkManager). */
+    private val syncRetry: SyncRetry = SyncRetry {},
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val snapshotDao = database.childSnapshotDao()
@@ -133,8 +136,8 @@ class ChildRepository(
         val device = (pairing.state.value as? DeviceState.Paired)?.device ?: return ChildSyncResult.Unauthorized
         val token = pairing.token() ?: return ChildSyncResult.Unauthorized
         val sent = outboxDao.all()
-        val nowMonotonic = monotonicClock.elapsed().toMillis()
-        val request = ChildSyncRequest(sent.map { it.toUpdate(nowMonotonic) })
+        val clocks = SyncClocks(monotonicClock.elapsed().toMillis(), wallClock.now().toEpochMilli())
+        val request = ChildSyncRequest(sent.map { it.toUpdate(clocks) })
         try {
             val response = httpClient.post(device.serverUrl + ApiPaths.CHILD_SYNC) {
                 bearerAuth(token)
@@ -155,18 +158,46 @@ class ChildRepository(
                     ChildSyncResult.Synced
                 }
                 HttpStatusCode.Unauthorized -> ChildSyncResult.Unauthorized
-                else -> ChildSyncResult.Unavailable
+                else -> unavailable()
             }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            ChildSyncResult.Unavailable
+            unavailable()
         }
+    }
+
+    /** No usable answer: the Outbox stays and the WorkManager job tries again as soon as there is a network. */
+    private fun unavailable(): ChildSyncResult {
+        syncRetry.schedule()
+        return ChildSyncResult.Unavailable
     }
 }
 
-private fun OutboxSessionEntity.toUpdate(nowMonotonicMillis: Long) = SessionUpdate(
+/** Both clocks of the device at the moment a sync is prepared. */
+private class SyncClocks(val monotonicMillis: Long, val wallMillis: Long)
+
+/**
+ * If the wall clock and the monotonic clock disagree by more than this about how long ago something was, the device
+ * restarted in between (the monotonic clock starts at zero again) and the monotonic value is useless.
+ */
+private const val RESTART_TOLERANCE_MILLIS = 2 * 60_000L
+
+/**
+ * How long ago a Zeitpunkt was, as the server wants it (Sync-Protokoll, "Zeit als Alter"). Normally the monotonic
+ * clock measures it, it does not jump. Lay a restart between the Zeitpunkt and now, the monotonic value is from the
+ * previous boot: the age then comes from the wall clock (Zeitpunkt and now are both on that clock, so the offset to
+ * the server clock known from the last snapshot cancels out; the server calculates "its time at receipt − age").
+ */
+private fun SyncClocks.ageOf(monotonicAt: Long, wallAt: Long): Long {
+    val monotonicAge = monotonicMillis - monotonicAt
+    val wallAge = wallMillis - wallAt
+    val restarted = monotonicAge < 0 || kotlin.math.abs(monotonicAge - wallAge) > RESTART_TOLERANCE_MILLIS
+    return (if (restarted) wallAge else monotonicAge).coerceAtLeast(0)
+}
+
+private fun OutboxSessionEntity.toUpdate(clocks: SyncClocks) = SessionUpdate(
     id = sessionId,
-    startAgeMillis = (nowMonotonicMillis - startMonotonicMillis).coerceAtLeast(0),
-    endAgeMillis = endMonotonicMillis?.let { (nowMonotonicMillis - it).coerceAtLeast(0) },
+    startAgeMillis = clocks.ageOf(startMonotonicMillis, startWallMillis),
+    endAgeMillis = if (endMonotonicMillis != null && endWallMillis != null) clocks.ageOf(endMonotonicMillis, endWallMillis) else null,
 )

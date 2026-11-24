@@ -132,7 +132,10 @@ class ChildService(
      * Rules per [SessionUpdate]:
      * - Times are "now − age" with now = server time at receipt, never in the future.
      * - An unknown id creates the Sitzung. For a known one the start stays (a repeated batch changes nothing).
-     * - The earlier end wins: a stop for an already ended Sitzung (e.g. after an Automatischer Stopp) changes nothing.
+     * - The earlier end wins (in time): a later stop for an already ended Sitzung (e.g. after an Automatischer Stopp)
+     *   changes nothing, an earlier one replaces the end and the reason becomes "gestoppt".
+     * - A new Sitzung starts no earlier than the end of the previous one (overlaps are cut) and is marked "offline
+     *   erfasst" when the server learns of its start later than [OFFLINE_DELAY] after it.
      */
     fun sync(childId: String, updates: List<SessionUpdate>): SyncResult {
         val invalid = updates.firstOrNull { runCatching { UUID.fromString(it.id) }.isFailure }
@@ -166,35 +169,53 @@ class ChildService(
     /** [Upsert.FOREIGN] when the id belongs to a Sitzung of another Kind, [Upsert.CHANGED] when a Start or Stopp was new. */
     private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant): Upsert {
         var changed = false
-        val start = now.minusMillis(update.startAgeMillis.coerceAtLeast(0))
-        val existing = c.prepareStatement("SELECT child_id, end_at FROM sessions WHERE id = ?").use { st ->
+        val existing = c.prepareStatement("SELECT child_id FROM sessions WHERE id = ?").use { st ->
             st.setString(1, update.id)
-            st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) to rs.getLong(2).takeUnless { rs.wasNull() } else null }
+            st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
         }
         if (existing == null) {
-            c.prepareStatement("INSERT INTO sessions (id, child_id, start_at) VALUES (?,?,?)").use {
+            // A Start learned late is "offline erfasst". Times lie in [end of the previous Sitzung, now].
+            val startAge = update.startAgeMillis.coerceAtLeast(0)
+            val start = maxOf(now.minusMillis(startAge).toEpochMilli(), previousEnd(c, childId, now.minusMillis(startAge)))
+            c.prepareStatement("INSERT INTO sessions (id, child_id, start_at, recorded_offline) VALUES (?,?,?,?)").use {
                 it.setString(1, update.id)
                 it.setString(2, childId)
-                it.setLong(3, start.toEpochMilli())
+                it.setLong(3, start)
+                it.setInt(4, if (startAge > OFFLINE_DELAY.toMillis()) 1 else 0)
                 it.executeUpdate()
             }
             changed = true
-        } else if (existing.first != childId) {
+        } else if (existing != childId) {
             return Upsert.FOREIGN
         }
         val endAge = update.endAgeMillis
-        if (endAge != null && (existing == null || existing.second == null)) {
+        if (endAge != null) {
+            // The earlier end wins (in time, not in arrival): an open Sitzung gets the end, an already ended one only
+            // gets an end that lies clearly earlier (e.g. the child stopped offline before the server's Automatischer
+            // Stopp), then the reason is "gestoppt". A later end changes nothing. Ends within END_TOLERANCE count as
+            // equal, so a repeated batch (the age was measured again) cannot move the end. The end never lies before the start.
             c.prepareStatement(
-                // The end never lies before the start, whichever start the Sitzung really has.
-                "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = 'STOPPED' WHERE id = ? AND end_at IS NULL",
+                "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = 'STOPPED' " +
+                    "WHERE id = ? AND (end_at IS NULL OR MAX(?, start_at) < end_at - ?)",
             ).use {
-                it.setLong(1, now.minusMillis(endAge.coerceAtLeast(0)).toEpochMilli())
+                val end = now.minusMillis(endAge.coerceAtLeast(0)).toEpochMilli()
+                it.setLong(1, end)
                 it.setString(2, update.id)
+                it.setLong(3, end)
+                it.setLong(4, END_TOLERANCE.toMillis())
                 if (it.executeUpdate() > 0) changed = true
             }
         }
         return if (changed) Upsert.CHANGED else Upsert.UNCHANGED
     }
+
+    /** The end of the latest ended Sitzung of the Kind that started no later than [start] (epoch millis), 0 if none. */
+    private fun previousEnd(c: Connection, childId: String, start: Instant): Long =
+        c.prepareStatement("SELECT MAX(end_at) FROM sessions WHERE child_id = ? AND end_at IS NOT NULL AND start_at <= ?").use { st ->
+            st.setString(1, childId)
+            st.setLong(2, start.toEpochMilli())
+            st.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else 0L }
+        }
 
     /** The complete Kind-Snapshot for the Kindgerät of [childId]. */
     fun childSnapshot(childId: String): ChildSnapshot? {
@@ -206,6 +227,7 @@ class ChildService(
         val loaded = load(c, childId, now) ?: return null
         val tag = now.atZone(zone).toLocalDate()
         val stand = loaded.stand
+        val offline = offlineSessionIds(c, childId)
         return ChildSnapshot(
             childId = childId,
             childName = loaded.name,
@@ -216,10 +238,17 @@ class ChildService(
             overrunLimitMinutes = stand.ueberziehungsgrenze.toMinutes().toInt(),
             templateToday = stand.wochenvorlage.dtoFor(tag),
             templateTomorrow = stand.wochenvorlage.dtoFor(tag.plusDays(1)),
-            todaySessions = stand.sitzungen.map { it.toRecord() },
+            todaySessions = stand.sitzungen.map { it.toRecord(offline) },
             todayAdjustments = stand.tagesanpassungen.map { DayAdjustment(it.tag.toString(), it.deltaMinuten, it.gebuchtAm.toEpochMilli()) },
         )
     }
+
+    /** The ids of the Sitzungen of [childId] marked "offline erfasst". */
+    private fun offlineSessionIds(c: Connection, childId: String): Set<String> =
+        c.prepareStatement("SELECT id FROM sessions WHERE child_id = ? AND recorded_offline = 1").use { st ->
+            st.setString(1, childId)
+            st.executeQuery().use { rs -> buildSet { while (rs.next()) add(rs.getString(1)) } }
+        }
 
     /** The Kinder for the Eltern-Snapshot (in v1 exactly one or none), oldest first. */
     fun parentChildren(): List<ParentChildSnapshot> {
@@ -241,6 +270,14 @@ class ChildService(
                 weeklyTemplate = stand.wochenvorlage.dtoFor(tag),
             )
         }
+    }
+
+    private companion object {
+        /** A Start the server learns of later than this after it happened is "offline erfasst" (a slow request is not). */
+        val OFFLINE_DELAY: Duration = Duration.ofMinutes(1)
+
+        /** Two ends this close count as the same end (ages are measured again with every sync). */
+        val END_TOLERANCE: Duration = Duration.ofSeconds(1)
     }
 
     private class Loaded(val name: String, val stand: KindStand)
@@ -334,8 +371,9 @@ private fun Tagesstand.toStatus() = ChildStatus(
     runningSession = laufendeSitzung?.let { RunningSession(it.id, it.start.toEpochMilli()) },
 )
 
-private fun Sitzung.toRecord() = SessionRecord(
+private fun Sitzung.toRecord(offline: Set<String>) = SessionRecord(
     id = id,
+    recordedOffline = id in offline,
     startEpochMillis = start.toEpochMilli(),
     endEpochMillis = ende?.zeitpunkt?.toEpochMilli(),
     endReason = ende?.let { if (it.grund == Endegrund.AUTOMATISCHER_STOPP) SessionEndReason.AUTOMATIC_STOP else SessionEndReason.STOPPED },

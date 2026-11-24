@@ -1,6 +1,7 @@
 package io.github.drusin.kidscreentime
 
 import android.app.Application
+import io.github.drusin.kidscreentime.sync.UnlockSyncReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,5 +25,6 @@ class KidScreenTimeApp : Application() {
         // Every process start (app start, boot receiver, alarm, push) plans the alarm from the local stand and
         // again after every change of it (Start, Stopp, every sync). This is the one hook of the Alarmkern.
         container.alarmKern.observe(processScope)
+        UnlockSyncReceiver.register(this)
     }
 }

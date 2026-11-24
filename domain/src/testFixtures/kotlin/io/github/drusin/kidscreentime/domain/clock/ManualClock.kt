@@ -25,6 +25,16 @@ class ManualClock(
         monotonic += duration
     }
 
+    /**
+     * The device restarts: the wall clock keeps running during the [downtime] and afterwards, the monotonic clock
+     * starts again at zero (like elapsed realtime after a boot), so every monotonic value taken before is invalid.
+     */
+    fun reboot(downtime: Duration) {
+        require(!downtime.isNegative) { "Time cannot run backwards: $downtime" }
+        wall += downtime
+        monotonic = Duration.ZERO
+    }
+
     /** Someone changes the wall clock (user, NTP). The monotonic clock does not move. */
     fun setWallClock(instant: Instant) {
         wall = instant

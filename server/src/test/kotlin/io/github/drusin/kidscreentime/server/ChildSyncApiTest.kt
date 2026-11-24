@@ -253,4 +253,139 @@ class ChildSyncApiTest {
             }.status,
         )
     }
+
+    // Ticket 08: offline Start/Stopp robust.
+
+    private fun TestServer.recordedOffline(id: String): Boolean = services.database.transaction { c ->
+        c.prepareStatement("SELECT recorded_offline FROM sessions WHERE id = ?").use { st ->
+            st.setString(1, id)
+            st.executeQuery().use { rs -> rs.next() && rs.getInt(1) == 1 }
+        }
+    }
+
+    @Test
+    fun `Erfährt der Server einen Start erst mit Verzögerung, ist die Sitzung offline erfasst`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val late = uuid()
+        val prompt = uuid()
+
+        val snapshot = client.snapshotAfter(child, SessionUpdate(late, startAgeMillis = 10 * minute, endAgeMillis = 5 * minute))
+        client.snapshotAfter(child, SessionUpdate(prompt, startAgeMillis = 5_000))
+
+        assertEquals(true, server.recordedOffline(late))
+        assertEquals(false, server.recordedOffline(prompt))
+        assertEquals(true, snapshot.todaySessions.single { it.id == late }.recordedOffline)
+    }
+
+    @Test
+    fun `Die Markierung offline erfasst bleibt bei wiederholten Batches und beim späteren Stopp`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = uuid()
+        client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 10 * minute))
+        server.clock.advance(Duration.ofMinutes(1))
+        client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 11 * minute))
+        server.clock.advance(Duration.ofMinutes(1))
+        val snapshot = client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 12 * minute, endAgeMillis = 0))
+
+        assertEquals(true, snapshot.todaySessions.single().recordedOffline)
+        assertEquals(1, snapshot.todaySessions.size)
+    }
+
+    @Test
+    fun `Ein Start liegt nie vor dem Ende der vorigen Sitzung, Überlappungen werden gekappt`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val now = server.clock.now().toEpochMilli()
+        val first = uuid()
+        val second = uuid()
+
+        // The device's times are skewed: the second Sitzung claims to start 10 min before the first one ended.
+        client.snapshotAfter(
+            child,
+            SessionUpdate(second, startAgeMillis = 40 * minute, endAgeMillis = 20 * minute),
+            SessionUpdate(first, startAgeMillis = 60 * minute, endAgeMillis = 30 * minute),
+        )
+
+        assertEquals(Triple(now - 60 * minute, now - 30 * minute, "STOPPED"), server.storedSession(first))
+        assertEquals(Triple(now - 30 * minute, now - 20 * minute, "STOPPED"), server.storedSession(second))
+    }
+
+    @Test
+    fun `Eine Sitzung im selben Batch beginnt nach dem Ende der vorigen, auch wenn der Server diese schon kennt`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val now = server.clock.now().toEpochMilli()
+        val first = uuid()
+        val second = uuid()
+        client.snapshotAfter(child, SessionUpdate(first, startAgeMillis = 60 * minute, endAgeMillis = 30 * minute))
+
+        client.snapshotAfter(child, SessionUpdate(second, startAgeMillis = 45 * minute))
+
+        assertEquals(now - 30 * minute, server.storedSession(second).first)
+    }
+
+    @Test
+    fun `Ein früheres Ende des Kindes ersetzt den Automatischen Stopp des Servers, der Grund ist gestoppt`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = uuid()
+        val now = server.clock.now().toEpochMilli()
+        server.services.database.transaction { c ->
+            c.createStatement().use {
+                it.execute("INSERT INTO sessions (id, child_id, start_at, end_at, end_reason) VALUES ('$id','${child.childId}',${now - 90 * minute},${now - 30 * minute},'AUTOMATIC_STOP')")
+            }
+        }
+
+        // The child stopped 50 min after the start, i.e. 20 min before the server's end.
+        val snapshot = client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 90 * minute, endAgeMillis = 40 * minute))
+
+        assertEquals(Triple(now - 90 * minute, now - 40 * minute, "STOPPED"), server.storedSession(id))
+        assertEquals(50 * minute, snapshot.status.usedMillis)
+    }
+
+    @Test
+    fun `Ein Ende, das nur um Millisekunden früher liegt, ändert den Automatischen Stopp nicht`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = uuid()
+        val now = server.clock.now().toEpochMilli()
+        server.services.database.transaction { c ->
+            c.createStatement().use {
+                it.execute("INSERT INTO sessions (id, child_id, start_at, end_at, end_reason) VALUES ('$id','${child.childId}',${now - 90 * minute},${now - 30 * minute},'AUTOMATIC_STOP')")
+            }
+        }
+
+        client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 90 * minute, endAgeMillis = 30 * minute + 40))
+
+        assertEquals(Triple(now - 90 * minute, now - 30 * minute, "AUTOMATIC_STOP"), server.storedSession(id))
+    }
+
+    @Test
+    fun `Ein wiederholter Batch mit späterem Empfang verschiebt auch ein früheres Ende nicht`() = testApplication {
+        val server = TestServer(dir).also { it.install(this) }
+        val client = server.client(this)
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = uuid()
+        val other = uuid()
+        client.snapshotAfter(child, SessionUpdate(id, startAgeMillis = 20 * minute, endAgeMillis = 10 * minute))
+        val stored = server.storedSession(id)
+        server.clock.advance(Duration.ofMinutes(5))
+
+        // Same Sitzung again with a later end (a later stop never changes anything), plus another one in the batch.
+        client.snapshotAfter(
+            child,
+            SessionUpdate(id, startAgeMillis = 25 * minute, endAgeMillis = 0),
+            SessionUpdate(other, startAgeMillis = 1_000),
+        )
+
+        assertEquals(stored, server.storedSession(id))
+    }
 }

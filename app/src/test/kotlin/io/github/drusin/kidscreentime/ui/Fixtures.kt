@@ -8,6 +8,7 @@ import io.github.drusin.kidscreentime.alarm.AlarmEffects
 import io.github.drusin.kidscreentime.db.AppDatabase
 import io.github.drusin.kidscreentime.domain.clock.ManualClock
 import io.github.drusin.kidscreentime.pairing.FakeTokenStore
+import io.github.drusin.kidscreentime.sync.SyncRetry
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -35,7 +36,13 @@ class TestContainer(
     engine: HttpClientEngine? = null,
     /** Replaces sound and full screen of the alarm, e.g. by `RecordingAlarmEffects`. */
     alarmEffects: AlarmEffects = AlarmEffects.NONE,
+    /** Replaces the WorkManager repetition of a failed sync; the default only counts the requests for one. */
+    syncRetry: SyncRetry? = null,
 ) {
+    /** How often a failed sync asked for the WorkManager repetition (when no [syncRetry] was given). */
+    var retriesScheduled = 0
+        private set
+
     val requests = mutableListOf<HttpRequestData>()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
 
@@ -49,6 +56,7 @@ class TestContainer(
         monotonicClock = clock,
         database = database,
         alarmEffects = alarmEffects,
+        syncRetry = syncRetry ?: SyncRetry { retriesScheduled++ },
     )
 }
 
