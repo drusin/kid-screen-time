@@ -26,7 +26,17 @@ data class ParentChildSnapshot(
     val overrunLimitMinutes: Int? = null,
     /** The Wochenvorlage version that is valid today. */
     val weeklyTemplate: WeeklyTemplateVersion? = null,
+    /** The Tagesanpassung "Letzte zurücknehmen" would take back (its delta in minutes), null when there is none today. */
+    val lastAdjustmentMinutes: Int? = null,
 )
+
+/** A Tagesanpassung for today: [deltaMinutes] is the Zu- (+) or Abschlag (−) in minutes, never 0. */
+@Serializable
+data class DailyAdjustmentRequest(val childId: String, val deltaMinutes: Int)
+
+/** Takes back the last Tagesanpassung of today. */
+@Serializable
+data class UndoDailyAdjustmentRequest(val childId: String)
 
 /** Complete state for a Elterngerät. Always the full state, never deltas. */
 @Serializable

@@ -162,6 +162,70 @@ class ChildService(
         return result
     }
 
+    /**
+     * Books a Tagesanpassung of [deltaMinutes] for today (append only). Afterwards the stand counts as changed
+     * (scheduler recalculates). The caller sends the Resync-Signal.
+     */
+    fun bookAdjustment(childId: String, deltaMinutes: Int, deviceId: String): AdjustmentResult {
+        val now = wallClock.now()
+        val result = database.transaction { c ->
+            if (!childExists(c, childId)) return@transaction AdjustmentResult.UnknownChild
+            insertAdjustment(c, childId, now, deltaMinutes, deviceId, reversesId = null)
+            AdjustmentResult.Booked
+        }
+        if (result == AdjustmentResult.Booked) notifyStandChanged()
+        return result
+    }
+
+    /**
+     * Takes back the last Tagesanpassung of today that is not yet taken back, as a Gegenbuchung (the same amount with the
+     * opposite sign, pointing at the original).
+     */
+    fun undoLastAdjustment(childId: String, deviceId: String): AdjustmentResult {
+        val now = wallClock.now()
+        val result = database.transaction { c ->
+            if (!childExists(c, childId)) return@transaction AdjustmentResult.UnknownChild
+            val last = lastUndoableAdjustment(c, childId, now.atZone(zone).toLocalDate()) ?: return@transaction AdjustmentResult.NothingToTakeBack
+            insertAdjustment(c, childId, now, -last.second, deviceId, reversesId = last.first)
+            AdjustmentResult.Booked
+        }
+        if (result == AdjustmentResult.Booked) notifyStandChanged()
+        return result
+    }
+
+    enum class AdjustmentResult { Booked, UnknownChild, NothingToTakeBack }
+
+    private fun childExists(c: Connection, childId: String): Boolean =
+        c.prepareStatement("SELECT 1 FROM children WHERE id = ?").use { st ->
+            st.setString(1, childId)
+            st.executeQuery().use { it.next() }
+        }
+
+    private fun insertAdjustment(c: Connection, childId: String, now: Instant, delta: Int, deviceId: String, reversesId: Long?) {
+        c.prepareStatement(
+            "INSERT INTO daily_adjustments (child_id, day, delta_minutes, booked_at, device_id, reverses_id) VALUES (?,?,?,?,?,?)",
+        ).use {
+            it.setString(1, childId)
+            it.setString(2, now.atZone(zone).toLocalDate().toString())
+            it.setInt(3, delta)
+            it.setLong(4, now.toEpochMilli())
+            it.setString(5, deviceId)
+            if (reversesId == null) it.setNull(6, java.sql.Types.INTEGER) else it.setLong(6, reversesId)
+            it.executeUpdate()
+        }
+    }
+
+    /** (id, delta) of the latest Tagesanpassung of [tag] that is no Gegenbuchung and was not taken back yet. */
+    private fun lastUndoableAdjustment(c: Connection, childId: String, tag: LocalDate): Pair<Long, Int>? =
+        c.prepareStatement(
+            "SELECT a.id, a.delta_minutes FROM daily_adjustments a WHERE a.child_id = ? AND a.day = ? AND a.reverses_id IS NULL " +
+                "AND NOT EXISTS (SELECT 1 FROM daily_adjustments r WHERE r.reverses_id = a.id) ORDER BY a.id DESC LIMIT 1",
+        ).use { st ->
+            st.setString(1, childId)
+            st.setString(2, tag.toString())
+            st.executeQuery().use { if (it.next()) it.getLong(1) to it.getInt(2) else null }
+        }
+
     private class ForeignSessionException : RuntimeException()
 
     private enum class Upsert { FOREIGN, CHANGED, UNCHANGED }
@@ -268,6 +332,7 @@ class ChildService(
                 warningThresholdMinutes = stand.vorwarnschwelle.toMinutes().toInt(),
                 overrunLimitMinutes = stand.ueberziehungsgrenze.toMinutes().toInt(),
                 weeklyTemplate = stand.wochenvorlage.dtoFor(tag),
+                lastAdjustmentMinutes = loaded.lastAdjustment,
             )
         }
     }
@@ -280,7 +345,7 @@ class ChildService(
         val END_TOLERANCE: Duration = Duration.ofSeconds(1)
     }
 
-    private class Loaded(val name: String, val stand: KindStand)
+    private class Loaded(val name: String, val stand: KindStand, val lastAdjustment: Int? = null)
 
     /** Loads the input of `domain` for the day of [now]: Wochenvorlage, today's Sitzungen and Tagesanpassungen, rules. */
     private fun load(c: Connection, childId: String, now: Instant): Loaded? {
@@ -347,7 +412,7 @@ class ChildService(
             vorwarnschwelle = Duration.ofMinutes(warning),
             ueberziehungsgrenze = Duration.ofMinutes(overrun),
         )
-        return Loaded(name, stand)
+        return Loaded(name, stand, lastUndoableAdjustment(c, childId, tag)?.second)
     }
 }
 

@@ -102,6 +102,118 @@ class ParentHomeViewModelTest {
         assertEquals(40f / 85f, status.usedFraction(), 0.001f)
     }
 
+    private fun snapshotWith(adjustment: Int, last: Int? = null): String {
+        val total = (60 + adjustment).coerceAtLeast(0)
+        return """{"serverTimeEpochMillis":1,"devices":[],"children":[{"childId":"k1","name":"Mia","status":{"day":"2026-01-05",""" +
+            """"allowance":{"templateMinutes":60,"adjustmentMinutes":$adjustment,"totalMinutes":$total},"usedMillis":0,""" +
+            """"remainingMillis":${total * 60_000L},"overrunMillis":0,"state":"READY"}${last?.let { ""","lastAdjustmentMinutes":$it""" } ?: ""}}]}"""
+    }
+
+    private fun bodyOf(request: io.ktor.client.request.HttpRequestData) =
+        (request.body as io.ktor.http.content.OutgoingContent.ByteArrayContent).bytes().decodeToString()
+
+    private suspend fun viewModelWith(adjustment: Int = 0, last: Int? = null): ParentHomeViewModel {
+        app.handler = { respondJson(snapshotWith(adjustment, last)) }
+        return ParentHomeViewModel(app.container.parentRepository).also { vm -> vm.state.await { !it.loading } }
+    }
+
+    @Test
+    fun `Der Stepper bereitet in 5-Minuten-Schritten vor, die Vorschau zeigt das neue Tageskontingent`() = runTest {
+        val viewModel = viewModelWith()
+
+        viewModel.stepAdjustment(5)
+        viewModel.stepAdjustment(5)
+        viewModel.stepAdjustment(5)
+
+        assertEquals(15, viewModel.state.value.pendingAdjustment)
+        assertEquals(75, viewModel.state.value.previewAllowanceMinutes)
+        viewModel.stepAdjustment(-5)
+        assertEquals(70, viewModel.state.value.previewAllowanceMinutes)
+        assertTrue(app.requests.none { it.method.value == "POST" }, "Vorbereiten bucht nichts")
+    }
+
+    @Test
+    fun `Die Vorschau fällt nie unter 0, auch nicht nach früheren Anpassungen`() = runTest {
+        val viewModel = viewModelWith(adjustment = -50)
+
+        repeat(5) { viewModel.stepAdjustment(-5) }
+
+        assertEquals(-25, viewModel.state.value.pendingAdjustment)
+        assertEquals(0, viewModel.state.value.previewAllowanceMinutes, "60 − 50 − 25 liegt unter 0")
+    }
+
+    @Test
+    fun `Gebucht wird erst auf Knopfdruck, und ohne vorbereiteten Wert gar nicht`() = runTest {
+        val viewModel = viewModelWith()
+        assertFalse(viewModel.state.value.canBook)
+
+        viewModel.bookAdjustment()
+
+        assertTrue(app.requests.none { it.method.value == "POST" })
+    }
+
+    @Test
+    fun `Buchen schickt Kind und Delta, übernimmt den neuen Eltern-Snapshot und setzt den Stepper zurück`() = runTest {
+        val viewModel = viewModelWith()
+        app.handler = { request ->
+            if (request.url.encodedPath == ApiPaths.PARENT_DAILY_ADJUSTMENTS) respondJson(snapshotWith(30, last = 30)) else respondJson(snapshotWith(0))
+        }
+        viewModel.stepAdjustment(30)
+
+        viewModel.bookAdjustment()
+        viewModel.state.await { it.child?.status?.allowance?.adjustmentMinutes == 30 }
+
+        val post = app.requests.last { it.method.value == "POST" }
+        assertEquals("https://kst.example.org" + ApiPaths.PARENT_DAILY_ADJUSTMENTS, post.url.toString())
+        assertEquals("Bearer tok-123", post.headers[HttpHeaders.Authorization])
+        assertEquals("""{"childId":"k1","deltaMinutes":30}""", bodyOf(post))
+        val state = viewModel.state.value
+        assertEquals(0, state.pendingAdjustment)
+        assertEquals(90, state.child?.status?.allowance?.totalMinutes)
+        assertEquals(30, state.undoableAdjustmentMinutes)
+        assertFalse(state.acting)
+        assertEquals(1, app.requests.count { it.method.value == "POST" }, "Der Snapshot der Antwort ist der Abgleich, kein zweiter Aufruf")
+    }
+
+    @Test
+    fun `Letzte zurücknehmen schickt die Gegenbuchung-Aktion und zeigt den neuen Stand`() = runTest {
+        val viewModel = viewModelWith(adjustment = 30, last = 30)
+        app.handler = { request ->
+            if (request.url.encodedPath == ApiPaths.PARENT_DAILY_ADJUSTMENTS_UNDO) respondJson(snapshotWith(0)) else respondJson(snapshotWith(30, last = 30))
+        }
+        assertEquals(30, viewModel.state.value.undoableAdjustmentMinutes)
+
+        viewModel.undoLastAdjustment()
+        viewModel.state.await { it.child?.status?.allowance?.adjustmentMinutes == 0 }
+
+        assertEquals("""{"childId":"k1"}""", bodyOf(app.requests.last { it.method.value == "POST" }))
+        assertEquals(null, viewModel.state.value.undoableAdjustmentMinutes)
+    }
+
+    @Test
+    fun `Ohne Anpassung heute gibt es nichts zurückzunehmen`() = runTest {
+        val viewModel = viewModelWith()
+
+        viewModel.undoLastAdjustment()
+
+        assertTrue(app.requests.none { it.method.value == "POST" })
+    }
+
+    @Test
+    fun `Scheitert das Buchen, bleibt der vorbereitete Wert und die Startseite meldet es`() = runTest {
+        val viewModel = viewModelWith()
+        app.handler = { throw IOException("offline") }
+        viewModel.stepAdjustment(10)
+
+        viewModel.bookAdjustment()
+        viewModel.state.await { it.actionFailed }
+
+        assertEquals(10, viewModel.state.value.pendingAdjustment)
+        assertFalse(viewModel.state.value.acting)
+        viewModel.stepAdjustment(5)
+        assertFalse(viewModel.state.value.actionFailed, "Eine neue Eingabe nimmt die Meldung weg")
+    }
+
     private companion object {
         const val SNAPSHOT_WITH_STATUS =
             """{"serverTimeEpochMillis":1,"devices":[],"children":[{"childId":"k1","name":"Mia","status":{"day":"2026-01-05",""" +

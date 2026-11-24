@@ -2,21 +2,25 @@ package io.github.drusin.kidscreentime.ui.parent
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -59,6 +63,7 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onPairDevice: () -> Unit) {
                 Text(stringResource(R.string.parent_home_no_child_hint), style = MaterialTheme.typography.bodyLarge)
             } else {
                 state.children.forEach { StatusCard(it, state.timeZone) }
+                if (state.child?.status != null) AdjustTodayCard(state, viewModel)
             }
             if (state.unavailable) {
                 Text(stringResource(R.string.parent_home_unavailable), color = MaterialTheme.colorScheme.error)
@@ -107,6 +112,37 @@ private fun StatusCard(child: ParentChildSnapshot, timeZone: String?) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** "Heute anpassen": Stepper (±5 min), Vorschau des neuen Tageskontingents, Buchen und "Letzte zurücknehmen". */
+@Composable
+private fun AdjustTodayCard(state: ParentHomeUiState, viewModel: ParentHomeViewModel) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.parent_adjust_title), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedButton(onClick = { viewModel.stepAdjustment(-ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = !state.acting) {
+                    Text(stringResource(R.string.parent_adjust_minus))
+                }
+                Text(signedMinutesText(state.pendingAdjustment), style = MaterialTheme.typography.headlineSmall)
+                OutlinedButton(onClick = { viewModel.stepAdjustment(ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = !state.acting) {
+                    Text(stringResource(R.string.parent_adjust_plus))
+                }
+            }
+            state.previewAllowanceMinutes?.let {
+                Text(stringResource(R.string.parent_adjust_preview, minutesText(it)), style = MaterialTheme.typography.bodyLarge)
+            }
+            Button(onClick = viewModel::bookAdjustment, enabled = state.canBook) { Text(stringResource(R.string.parent_adjust_book)) }
+            state.undoableAdjustmentMinutes?.let {
+                TextButton(onClick = viewModel::undoLastAdjustment, enabled = !state.acting) {
+                    Text(stringResource(R.string.parent_adjust_undo, signedMinutesText(it)))
+                }
+            }
+            if (state.actionFailed) {
+                Text(stringResource(R.string.parent_adjust_failed), color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }

@@ -3,6 +3,8 @@ package io.github.drusin.kidscreentime.parent
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
+import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.pairing.PairingRepository
@@ -25,6 +27,22 @@ sealed interface SnapshotResult {
 
     /** No network or no usable answer (ticket 17 adds the read-only cache for this case). */
     data object Unavailable : SnapshotResult
+}
+
+/**
+ * The answer of every Eltern-Aktion (Tagesanpassung, later Wochenvorlage, Regeln, Entkoppeln ...): the server changes
+ * its state and returns the new Eltern-Snapshot, which is the Abgleich of the Elterngerät.
+ */
+sealed interface ParentActionResult {
+    data class Done(val snapshot: ParentSnapshot) : ParentActionResult
+
+    /** `400`/`409`: the server refused the wish (unknown Kind, nothing to take back ...). The stand did not change. */
+    data object Rejected : ParentActionResult
+
+    data object Unauthorized : ParentActionResult
+
+    /** No network or no usable answer. Eltern-Aktionen need the server (ticket 17 shows that state). */
+    data object Unavailable : ParentActionResult
 }
 
 sealed interface CreateCodeResult {
@@ -80,6 +98,37 @@ class ParentRepository(
             throw e
         } catch (_: Exception) {
             CreateCodeResult.Unavailable
+        }
+    }
+
+    /** Books a Tagesanpassung of [deltaMinutes] for today for [childId]. */
+    suspend fun bookAdjustment(childId: String, deltaMinutes: Int): ParentActionResult =
+        action(ApiPaths.PARENT_DAILY_ADJUSTMENTS, DailyAdjustmentRequest(childId, deltaMinutes))
+
+    /** Takes back the last Tagesanpassung of today (the server books the Gegenbuchung). */
+    suspend fun undoLastAdjustment(childId: String): ParentActionResult =
+        action(ApiPaths.PARENT_DAILY_ADJUSTMENTS_UNDO, UndoDailyAdjustmentRequest(childId))
+
+    /** The one way a Eltern-Aktion goes to the server: POST [body] to [path], expect the new [ParentSnapshot]. */
+    private suspend inline fun <reified T : Any> action(path: String, body: T): ParentActionResult {
+        val device = (pairing.state.value as? DeviceState.Paired)?.device ?: return ParentActionResult.Unauthorized
+        val token = pairing.token() ?: return ParentActionResult.Unauthorized
+        return try {
+            val response = httpClient.post(device.serverUrl + path) {
+                bearerAuth(token)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            when (response.status) {
+                HttpStatusCode.OK -> ParentActionResult.Done(response.body())
+                HttpStatusCode.BadRequest, HttpStatusCode.Conflict -> ParentActionResult.Rejected
+                HttpStatusCode.Unauthorized -> ParentActionResult.Unauthorized
+                else -> ParentActionResult.Unavailable
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            ParentActionResult.Unavailable
         }
     }
 }

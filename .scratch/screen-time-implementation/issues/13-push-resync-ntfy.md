@@ -47,4 +47,6 @@
 - Ntfy-Server hinter Traefik mit nur-lesender Route: Registrierung und Push funktionieren weiter (Veröffentlichen läuft intern).
 - Nach jedem Server-Update kurz wiederholen.
 
+**Nachtrag Ticket 09:** `signalChild` nach der Tagesanpassung ist verdrahtet und getestet (`DailyAdjustmentApiTest`). Offen bleiben 10 und 12.
+
 **Abweichungen:** Die Signale an das Kindgerät nach Eltern-Aktionen und nach dem Automatischen Stopp sowie an die Elterngeräte nach der Checkliste sind nur als Dienst (`signalChild`/`signalParents`) vorhanden und nur nach Start/Stopp des Kindes verdrahtet, weil es die Eltern-Aktionen (09, 10, 12), den Automatischen Stopp (07) und die Checklisten-Übergabe (15) noch nicht gibt; die Aufrufstellen stehen oben. Das Kriterium „Resync-Signale gehen an …“ bleibt deshalb offen (Dienst und Verdrahtung für Start/Stopp stehen, getestet); es schließt sich mit den genannten Tickets. Status trotzdem `done`: Es fehlt nichts, was ein Mensch klären müsste.

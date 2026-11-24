@@ -6,7 +6,9 @@ import io.github.drusin.kidscreentime.api.ChildSyncRequest
 import io.github.drusin.kidscreentime.api.ErrorResponse
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
+import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.ParentSnapshot
+import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.PushRegistration
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeRequest
 import io.ktor.http.HttpHeaders
@@ -19,6 +21,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlin.math.abs
 
 /**
  * Defines a route that needs a Geräte-Token of [role]. Pattern for every authenticated endpoint:
@@ -85,6 +88,40 @@ fun Route.apiRoutes(services: ServerServices) {
 
     authenticatedGet(ApiPaths.PARENT_SNAPSHOT, services, DeviceRole.PARENT) {
         call.respond(parentSnapshot(services))
+    }
+
+    // Eltern-Aktion (Pattern: Aktion, Stand ändern, notifyStandChanged, Resync-Signal ans Kind, neuer Eltern-Snapshot als Antwort).
+    authenticatedPost(ApiPaths.PARENT_DAILY_ADJUSTMENTS, services, DeviceRole.PARENT) { device ->
+        val request = call.receive<DailyAdjustmentRequest>()
+        val problem = when {
+            request.deltaMinutes == 0 -> "Die Tagesanpassung darf nicht 0 sein"
+            abs(request.deltaMinutes) > MAX_ADJUSTMENT_MINUTES -> "Die Tagesanpassung ist zu groß"
+            else -> null
+        }
+        if (problem != null) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(problem))
+            return@authenticatedPost
+        }
+        when (services.children.bookAdjustment(request.childId, request.deltaMinutes, device.id)) {
+            ChildService.AdjustmentResult.Booked -> {
+                call.respond(parentSnapshot(services))
+                services.push.signalChild(request.childId)
+            }
+            else -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
+        }
+    }
+
+    authenticatedPost(ApiPaths.PARENT_DAILY_ADJUSTMENTS_UNDO, services, DeviceRole.PARENT) { device ->
+        val request = call.receive<UndoDailyAdjustmentRequest>()
+        when (services.children.undoLastAdjustment(request.childId, device.id)) {
+            ChildService.AdjustmentResult.UnknownChild -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
+            ChildService.AdjustmentResult.NothingToTakeBack ->
+                call.respond(HttpStatusCode.Conflict, ErrorResponse("Es gibt keine Tagesanpassung zum Zurücknehmen"))
+            ChildService.AdjustmentResult.Booked -> {
+                call.respond(parentSnapshot(services))
+                services.push.signalChild(request.childId)
+            }
+        }
     }
 
     authenticatedPost(ApiPaths.PARENT_PAIRING_CODES, services, DeviceRole.PARENT) {
@@ -155,6 +192,9 @@ fun Route.apiRoutes(services: ServerServices) {
         }
     }
 }
+
+/** A single Tagesanpassung is at most one day (a typo guard, not a rule of `domain`). */
+private const val MAX_ADJUSTMENT_MINUTES = 24 * 60
 
 private fun parentSnapshot(services: ServerServices) = ParentSnapshot(
     serverTimeEpochMillis = services.wallClock.now().toEpochMilli(),

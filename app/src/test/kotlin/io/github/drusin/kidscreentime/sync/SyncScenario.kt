@@ -70,9 +70,13 @@ class SyncScenario(
 
     private val relay: HttpClient = host.createClient { }
 
-    /** One simulated Kindgerät: its own container (Room, token) and the Kind it is paired to. */
+    /** One simulated device: its own container (Room, token) and, for a Kindgerät, the Kind it is paired to. */
     inner class Device(val app: TestContainer) {
         val repository get() = app.container.childRepository
+
+        /** `true`: only this device has no network (the others are not affected, unlike [online]). */
+        @Volatile
+        var offline: Boolean = false
         var childId: String? = null
             internal set
     }
@@ -84,9 +88,10 @@ class SyncScenario(
 
     /** Creates another device of the app on the same server and clock (not paired yet). */
     fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null): Device {
+        lateinit var self: Device
         val engine = MockEngine { request ->
             requests += "${request.method.value} ${request.url.encodedPath}"
-            if (!online) throw IOException("kein Netz")
+            if (!online || self.offline) throw IOException("kein Netz")
             val bytes = when (val body = request.body) {
                 is OutgoingContent.ByteArrayContent -> body.bytes()
                 is OutgoingContent.NoContent -> ByteArray(0)
@@ -99,7 +104,7 @@ class SyncScenario(
             }
             respond(answer.readRawBytes(), answer.status, headersOf(HttpHeaders.ContentType, answer.headers[HttpHeaders.ContentType] ?: "application/json"))
         }
-        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { devices += it }
+        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { self = it; devices += it }
     }
 
     /** Creates a device and pairs it as the Kindgerät of a new Kind "Mia" (or of [childId] when given). */
@@ -109,6 +114,17 @@ class SyncScenario(
         else server.services.pairing.createCode(DeviceRole.CHILD, childId = childId)
         device.app.container.pairingRepository.pair(TestServer.PUBLIC, code.code, "Tablet")
         device.childId = (device.app.container.pairingRepository.state.value as io.github.drusin.kidscreentime.pairing.DeviceState.Paired).device.childId
+        return device
+    }
+
+    /** Creates a device and pairs it as a Elterngerät (it does not count as [child]). */
+    suspend fun pairParentDevice(): Device {
+        val before = devices.toList()
+        val device = device()
+        devices.clear()
+        devices += before
+        val code = server.services.pairing.createCode(DeviceRole.PARENT)
+        device.app.container.pairingRepository.pair(TestServer.PUBLIC, code.code, "Handy")
         return device
     }
 

@@ -13,6 +13,18 @@ object ApiPaths {
     /** Elterngerät: create a Kopplungscode (POST). */
     const val PARENT_PAIRING_CODES = "/api/v1/parent/pairing-codes"
 
+    /**
+     * Elterngerät: book a Tagesanpassung for today (POST [DailyAdjustmentRequest]). Like every Eltern-Aktion it answers
+     * with the new [ParentSnapshot] (`400` for an unknown Kind or an invalid delta).
+     */
+    const val PARENT_DAILY_ADJUSTMENTS = "/api/v1/parent/daily-adjustments"
+
+    /**
+     * Elterngerät: take back the last Tagesanpassung of today as a Gegenbuchung (POST [UndoDailyAdjustmentRequest]).
+     * Answers with the new [ParentSnapshot], `409` when there is nothing to take back.
+     */
+    const val PARENT_DAILY_ADJUSTMENTS_UNDO = "/api/v1/parent/daily-adjustments/undo"
+
     /** Kindgerät: sync (POST). Sends the Outbox ([ChildSyncRequest]) and returns the complete [ChildSnapshot]. */
     const val CHILD_SYNC = "/api/v1/child/sync"
 

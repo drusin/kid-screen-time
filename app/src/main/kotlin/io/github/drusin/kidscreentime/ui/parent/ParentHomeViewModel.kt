@@ -3,6 +3,8 @@ package io.github.drusin.kidscreentime.ui.parent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
+import io.github.drusin.kidscreentime.api.ParentSnapshot
+import io.github.drusin.kidscreentime.parent.ParentActionResult
 import io.github.drusin.kidscreentime.parent.ParentRepository
 import io.github.drusin.kidscreentime.parent.SnapshotResult
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +22,28 @@ data class ParentHomeUiState(
     val timeZone: String? = null,
     /** The Eltern-Snapshot could not be loaded. The ticket 17 cache will show the last known state instead. */
     val unavailable: Boolean = false,
+    /** "Heute anpassen": the prepared Tagesanpassung in minutes (Stepper, multiple of 5), 0 = nothing prepared. */
+    val pendingAdjustment: Int = 0,
+    /** An Eltern-Aktion is on its way to the server. */
+    val acting: Boolean = false,
+    /** The last Eltern-Aktion failed (refused or no network). The prepared value stays so the parent can try again. */
+    val actionFailed: Boolean = false,
 ) {
+    /** The Kind the Eltern-Aktionen of the Startseite are about (v1: exactly one). */
+    val child: ParentChildSnapshot? get() = children.firstOrNull()
+
+    /**
+     * Vorschau: the Tageskontingent after booking [pendingAdjustment], never below 0. Null without Kind or status.
+     * Calculated from Vorlage plus the sum of today's Tagesanpassungen (not from the already clamped total).
+     */
+    val previewAllowanceMinutes: Int?
+        get() = child?.status?.allowance?.let { (it.templateMinutes + it.adjustmentMinutes + pendingAdjustment).coerceAtLeast(0) }
+
+    val canBook: Boolean get() = child != null && pendingAdjustment != 0 && !acting
+
+    /** The delta "Letzte zurücknehmen" would take back, null when there is none (the button is hidden). */
+    val undoableAdjustmentMinutes: Int? get() = child?.lastAdjustmentMinutes
+
     /** Hinweis "noch kein Kind gekoppelt". */
     val showNoChildHint: Boolean get() = children.isEmpty()
 }
@@ -39,16 +62,64 @@ class ParentHomeViewModel(
         viewModelScope.launch { resyncs.collect { refresh() } }
     }
 
+    /** Stepper: moves the prepared Tagesanpassung by [minutes] (±[ADJUSTMENT_STEP]), within ±[MAX_ADJUSTMENT]. */
+    fun stepAdjustment(minutes: Int) {
+        _state.update { it.copy(pendingAdjustment = (it.pendingAdjustment + minutes).coerceIn(-MAX_ADJUSTMENT, MAX_ADJUSTMENT), actionFailed = false) }
+    }
+
+    /** Books the prepared Tagesanpassung. */
+    fun bookAdjustment() {
+        val current = _state.value
+        val child = current.child ?: return
+        if (!current.canBook) return
+        runAction { repository.bookAdjustment(child.childId, current.pendingAdjustment) }
+    }
+
+    /** Takes back the last Tagesanpassung of today (Gegenbuchung at the server). */
+    fun undoLastAdjustment() {
+        val current = _state.value
+        val child = current.child ?: return
+        if (current.acting || current.undoableAdjustmentMinutes == null) return
+        runAction { repository.undoLastAdjustment(child.childId) }
+    }
+
+    /**
+     * The one pattern of every Eltern-Aktion (tickets 09, 10, 17): the repository call returns the new Eltern-Snapshot,
+     * which becomes the screen state (that is the Abgleich, no extra load). When the server refused, the Snapshot is
+     * loaded again, because then the screen was out of date (for example a second Elterngerät booked meanwhile).
+     */
+    private fun runAction(call: suspend () -> ParentActionResult) {
+        _state.update { it.copy(acting = true, actionFailed = false) }
+        viewModelScope.launch {
+            when (val result = call()) {
+                is ParentActionResult.Done -> _state.update { applySnapshot(it, result.snapshot).copy(pendingAdjustment = 0, acting = false) }
+                ParentActionResult.Rejected -> {
+                    _state.update { it.copy(acting = false, actionFailed = true) }
+                    refresh()
+                }
+                ParentActionResult.Unauthorized, ParentActionResult.Unavailable -> _state.update { it.copy(acting = false, actionFailed = true) }
+            }
+        }
+    }
+
+    private fun applySnapshot(state: ParentHomeUiState, snapshot: ParentSnapshot) =
+        state.copy(loading = false, unavailable = false, children = snapshot.children, timeZone = snapshot.timeZone)
+
     fun refresh() {
         _state.update { it.copy(loading = true) }
         viewModelScope.launch {
             val result = repository.loadSnapshot()
             _state.update {
                 when (result) {
-                    is SnapshotResult.Loaded -> ParentHomeUiState(loading = false, children = result.snapshot.children, timeZone = result.snapshot.timeZone)
+                    is SnapshotResult.Loaded -> applySnapshot(it, result.snapshot)
                     SnapshotResult.Unauthorized, SnapshotResult.Unavailable -> it.copy(loading = false, unavailable = true)
                 }
             }
         }
+    }
+
+    companion object {
+        const val ADJUSTMENT_STEP = 5
+        const val MAX_ADJUSTMENT = 24 * 60
     }
 }
