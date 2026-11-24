@@ -41,6 +41,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Welche App-Architektur und welcher Stack?](issues/06-app-architektur-stack.md): eine native Kotlin/Compose-App für beide Rollen (`minSdk 33`, Material 3, nur Deutsch), reines Kotlin-Modul `domain` für die Regeln, Room + Ktor Client, Eltern-Aktionen nur online, Einrichtungs-Checkliste am Kindgerät, ntfy-App als UnifiedPush-Verteiler
 - [Welcher Backend-Stack, welche Persistenz und welche API-Form?](issues/07-backend-stack-persistenz.md): Kotlin + Ktor mit geteilten Modulen `domain`/`api` im Monorepo, SQLite im Volume, REST/JSON-Stand-Snapshot (Push nur als Signal), Compose mit Server + ntfy, Server plant zeitgesteuerte Ereignisse im Prozess und verschickt alle Eltern-Benachrichtigungen, JRE 25
 - [Wie sehen Kind- und Eltern-Oberfläche aus?](issues/08-ui-prototyp.md): Kindgerät mit Restzeit-Ring und großem Start/Stopp-Knopf (Variante A), Elterngerät als ein scrollender Bildschirm mit Status, Stepper-Tagesanpassung und Wochenvorlage-Dialog, Regeln und Geräte im ⋮-Menü (Variante B), Alarm als Vollbild, eigene Zustandsfarben
+- [Wie wird die APK gebaut, signiert und veröffentlicht?](issues/09-build-release-apk.md): GitHub Actions mit öffentlichem Repo, Release per Tag `vX.Y.Z` (versionCode aus dem Tag), JVM-Tests + Lint als Gate, Keystore im Passwortmanager + Offline-Backup + CI-Secret, Package `io.github.drusin.kidscreentime`, Google-Registrierung beim ersten Release
 
 ## Not yet specified
 
