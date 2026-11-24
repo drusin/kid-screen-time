@@ -1,6 +1,5 @@
 services:
-  # Der Servicename entspricht der Traefik-defaultRule: kidscreentime.rusin.xyz (die Regel steht unten explizit,
-  # weil die Route eine Middleware braucht)
+  # Der Servicename entspricht der Traefik-defaultRule: kidscreentime.rusin.xyz (die Regel steht unten explizit)
   kidscreentime:
     image: ghcr.io/drusin/kid-screen-time-server:1.0.0 # feste Version; zum Update hochsetzen
     restart: unless-stopped
@@ -20,9 +19,8 @@ services:
       - ${DATA_DIR:-/media/ssd/docker-container-data/kidscreentime}/server:/data
     ports:
       # Admin-Port nur als Host-Port (Heimnetz), bewusst ohne Traefik-Route:
-      # http://zotacserver:8081/admin
-      # Host- und Container-Port müssen gleich sein (siehe docs/betrieb.md, Bekannte Einschränkung).
-      - "8081:8081"
+      # http://zotacserver:8790/admin (der Host-Port ist frei wählbar)
+      - "8790:8081"
     networks:
       - proxy
       - kidscreentime
@@ -34,9 +32,5 @@ services:
       - traefik.http.routers.kidscreentime.rule=Host(`kidscreentime.rusin.xyz`)
       - traefik.http.routers.kidscreentime.entrypoints=websecure
       - traefik.http.routers.kidscreentime.tls.certresolver=letsencrypt
-      - traefik.http.routers.kidscreentime.middlewares=kidscreentime-host
       - traefik.http.routers.kidscreentime.service=kidscreentime
       - traefik.http.services.kidscreentime.loadbalancer.server.port=8080
-      # Umgehung (siehe docs/betrieb.md, Bekannte Einschränkung): der Server wählt seine Routen nach dem Port im
-      # Host-Header. Ohne diese Zeile liefert er hinter Traefik überall 404. Entfällt, sobald der Server das behebt.
-      - traefik.http.middlewares.kidscreentime-host.headers.customrequestheaders.Host=kidscreentime:8080

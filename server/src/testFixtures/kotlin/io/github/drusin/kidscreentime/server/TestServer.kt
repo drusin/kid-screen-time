@@ -44,6 +44,8 @@ class TestServer(
     val clock: ManualClock = ManualClock(),
     /** Where the server publishes pushes; tests point it at a fake HTTP endpoint instead of ntfy. */
     ntfyInternalUrl: String = "http://ntfy:80",
+    publicPort: Int = PUBLIC_PORT,
+    adminPort: Int = ADMIN_PORT,
 ) {
     val config = ServerConfig(
         adminPassword = ADMIN_PASSWORD,
@@ -52,8 +54,8 @@ class TestServer(
         ntfyPublicUrl = "https://ntfy.example.org",
         ntfyInternalUrl = ntfyInternalUrl,
         databasePath = dir.resolve("kid-screen-time.db"),
-        port = PUBLIC_PORT,
-        adminPort = ADMIN_PORT,
+        port = publicPort,
+        adminPort = adminPort,
     )
     val services: ServerServices = ServerServices.create(config, clock, clock)
 
