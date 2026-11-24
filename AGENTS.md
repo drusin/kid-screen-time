@@ -43,3 +43,9 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 - HTTP: `createHttpClient(engine)` (Ktor, JSON mit `ignoreUnknownKeys`, Timeouts, wirft nicht bei HTTP-Fehlern). Authentifizierte Aufrufe: `bearerAuth(pairing.token())`, URL = `device.serverUrl + ApiPaths.X`. Netzfehler und Status in ein Ergebnis-Sealed-Interface übersetzen (siehe `SnapshotResult`).
 - Token: nur über `TokenStore`. Tests nutzen `FakeTokenStore`, nie den Keystore.
 - ViewModel-Tests: `ui/Fixtures.kt` mit `TestContainer` (Fake-Token-Speicher, `MockEngine` über `handler`) und `StateFlow.await { }`, weil MockEngine im Hintergrund antwortet. `Dispatchers.setMain(UnconfinedTestDispatcher())` im `@Before`.
+
+## `domain`: Bildschirmzeit-Regeln
+
+- Einstieg ist `KindStand(...).tagesstand(jetzt)` im Paket `domain.bildschirmzeit`. Die Zeit wird als `Instant` übergeben, `domain` liest nie selbst eine Uhr. Erweiterungen (fällige Zeitpunkte, Mitternacht, Verlauf) kommen als weitere Funktionen auf `KindStand`/`Tagesstand`, nicht als zweite Rechenlogik.
+- `restzeit` und `ueberziehung` sind nie negativ. Details und Entscheidungen: Ticket 02, „Notizen zur Umsetzung“.
+- Tests dafür nutzen `ManualClock` und gehen nur über `tagesstand`.
