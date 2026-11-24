@@ -19,7 +19,7 @@ _Avoid_: Tagesausnahme (ersetzt nichts, sondern verändert)
 
 **Überziehung**: Bildschirmzeit, die nach Ablauf des Tageskontingents weiter gezählt wird.
 
-**Sitzung**: Ein Timer-Lauf vom Start bis zum Stopp. Nur das Kind startet und stoppt sie, am Kindgerät. Die einzige Ausnahme ist der Automatische Stopp. Sie kann nur bei Restzeit > 0 gestartet werden. Zeit über Mitternacht wird auf beide Tage aufgeteilt und zählt ab 00:00 gegen das neue Tageskontingent.
+**Sitzung**: Ein Timer-Lauf vom Start bis zum Stopp. Nur das Kind startet und stoppt sie, am Kindgerät. Die einzige Ausnahme ist der Automatische Stopp. Sie kann nur bei Restzeit > 0 gestartet werden. Zeit über Mitternacht wird auf beide Tage aufgeteilt und zählt ab 00:00 gegen das neue Tageskontingent. Eine Sitzung, die der Server erst nachträglich erfährt, weil das Kindgerät offline war, ist **offline erfasst** und wird im Verlauf so markiert.
 
 **Automatischer Stopp**: Das Ende einer Sitzung ohne Zutun des Kindes, wenn die Überziehung eine von den Eltern einstellbare Grenze erreicht (Standard: 60 Minuten). Die Eltern werden benachrichtigt.
 
