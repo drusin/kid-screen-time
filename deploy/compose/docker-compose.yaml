@@ -1,0 +1,11 @@
+# Beispiel-Stack für das Homelab (Ordner ~/docker/kidscreentime/). Betrieb: docs/betrieb.md
+include:
+  - server.docker-compose.yaml
+  - ntfy.docker-compose.yaml
+
+networks:
+  # Traefik-Netz des Homelabs (extern, existiert schon).
+  proxy:
+    external: true
+  # Nur für Server <-> ntfy.
+  kidscreentime:
