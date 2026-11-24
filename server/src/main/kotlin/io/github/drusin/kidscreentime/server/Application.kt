@@ -12,7 +12,10 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
-import io.ktor.server.routing.port
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.RouteSelector
+import io.ktor.server.routing.RouteSelectorEvaluation
+import io.ktor.server.routing.RoutingResolveContext
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,14 +91,33 @@ fun Application.serverModule(
         services.database.close()
     }
     routing {
-        port(config.port) {
+        localPort(config.port) {
             get(ApiPaths.HEALTH) {
                 call.respond(HealthResponse(status = "ok", serverTimeEpochMillis = wallClock.now().toEpochMilli()))
             }
             apiRoutes(services)
         }
-        port(config.adminPort) {
+        localPort(config.adminPort) {
             adminRoutes(services)
         }
     }
+}
+
+/**
+ * Routes below this one match only connections that arrived on the local [port]. Ktor's own `port(...)` compares
+ * the port of the Host header instead, which is wrong behind a reverse proxy (no port in Host) and lets a client
+ * pick the route set by sending `Host: x:<adminPort>`. The local port cannot be influenced by the request.
+ */
+fun Route.localPort(port: Int, build: Route.() -> Unit): Route =
+    createChild(LocalPortRouteSelector(port)).apply(build)
+
+private class LocalPortRouteSelector(private val port: Int) : RouteSelector() {
+    override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int): RouteSelectorEvaluation =
+        if (context.call.request.local.localPort == port) {
+            RouteSelectorEvaluation.Constant
+        } else {
+            RouteSelectorEvaluation.Failed
+        }
+
+    override fun toString(): String = "(localPort = $port)"
 }

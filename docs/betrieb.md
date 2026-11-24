@@ -25,7 +25,7 @@ Konfiguration (Variablen, Pflichtwerte) steht im [README](../README.md). `FAMILY
 
 Der Admin-Port ist nur als Host-Port veröffentlicht und hat keine Traefik-Route; über die öffentliche Domain ist `/admin` nicht erreichbar.
 
-1. Im Heimnetz `http://zotacserver:8081/admin` öffnen (Formular über HTTP, bewusst nur im LAN).
+1. Im Heimnetz `http://zotacserver:8790/admin` öffnen (Host-Port 8790 ist frei wählbar, im Container ist es 8081; Formular über HTTP, bewusst nur im LAN).
 2. `ADMIN_PASSWORD` eingeben: Das Formular erzeugt einen Kopplungscode für das erste Elterngerät.
 3. In der App unter „Gerät koppeln“ Server-URL (`https://kidscreentime.rusin.xyz`) und Code eintragen. Weitere Geräte koppelt ein Elterngerät selbst.
 
@@ -51,11 +51,10 @@ Auf allen Geräten läuft die ntfy-Android-App als UnifiedPush-Verteiler, einger
 3. Kind startet und stoppt eine Sitzung: das Elterngerät aktualisiert sich ohne Neuladen.
 4. Bleibt das aus: `docker compose logs kidscreentime ntfy`; prüfen, ob `curl -I https://ntfy.rusin.xyz` antwortet und ob die ntfy-App das Abo `up…` zeigt. Der Server veröffentlicht intern über `http://ntfy:80`, nicht über Traefik.
 
-## Bekannte Einschränkung (Server wählt Routen nach dem Port im Host-Header)
+## Port-Routing (behoben)
 
-Beim Prüfen des Stacks fiel auf: Der Server hängt Routen mit Ktor `port(...)` an, und das vergleicht den Port aus dem `Host`-Header der Anfrage, nicht den Port, auf dem die Verbindung ankommt. Folgen:
+Früher wählte der Server seine Routen mit Ktor `port(...)`, das den Port aus dem `Host`-Header vergleicht. Hinter Traefik (`Host` ohne Port) antwortete der öffentliche Port deshalb überall `404`, und der Admin-Port ging nur bei gleichem Host- und Container-Port. Port-Routing behoben in `Application.kt` (`Route.localPort`): Der Server unterscheidet jetzt nach dem lokalen Port der Verbindung (`call.request.local.localPort`). Folgen:
 
-- **Öffentlicher Port hinter Traefik:** Traefik reicht `Host: kidscreentime.rusin.xyz` (ohne `:8080`) weiter, der Server antwortet überall `404`. Das Beispiel-Compose setzt deshalb eine Traefik-Middleware (`kidscreentime-host`), die den Host-Header auf `kidscreentime:8080` setzt. Mit ihr liefert `/health` über Traefik `200`. Das ist eine Umgehung. Die Dauerlösung ist eine Änderung im Server (Routen nach `call.request.local.localPort` statt nach dem Host-Header-Port); die Middleware entfällt dann.
-- **Admin-Port:** Host-Port und Container-Port müssen gleich sein (`8081:8081`), sonst antwortet `/admin` mit `404` (`localhost:8790` auf `8081` ging nicht). Außerdem muss die URL den Port enthalten (`http://zotacserver:8081/admin`).
-
-Geprüft wurde das lokal mit einem Traefik v3 und denselben Labels (ohne TLS); mit dem echten Homelab-Traefik steht es noch aus.
+- Die Traefik-Middleware, die den Host-Header setzte, entfällt.
+- Der Admin-Host-Port ist frei wählbar (`8790:8081`). Der Host-Header spielt keine Rolle; `Host: x:8081` auf dem öffentlichen Port erreicht `/admin` nicht.
+- Hast du den Stack mit der alten Version aufgesetzt: Middleware-Label und `8081:8081` aus der Compose-Datei entfernen und neu starten.
