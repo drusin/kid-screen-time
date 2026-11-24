@@ -38,13 +38,18 @@ import java.time.ZoneId
  * The public API is on [PUBLIC], the Admin-Formular on [ADMIN]. Build a second [TestServer] on the same
  * folder to simulate a restart (same database file).
  */
-class TestServer(dir: Path, val clock: ManualClock = ManualClock()) {
+class TestServer(
+    dir: Path,
+    val clock: ManualClock = ManualClock(),
+    /** Where the server publishes pushes; tests point it at a fake HTTP endpoint instead of ntfy. */
+    ntfyInternalUrl: String = "http://ntfy:80",
+) {
     val config = ServerConfig(
         adminPassword = ADMIN_PASSWORD,
         familyZone = ZoneId.of("Europe/Berlin"),
         publicServerUrl = "https://kst.example.org",
         ntfyPublicUrl = "https://ntfy.example.org",
-        ntfyInternalUrl = "http://ntfy:80",
+        ntfyInternalUrl = ntfyInternalUrl,
         databasePath = dir.resolve("kid-screen-time.db"),
         port = PUBLIC_PORT,
         adminPort = ADMIN_PORT,

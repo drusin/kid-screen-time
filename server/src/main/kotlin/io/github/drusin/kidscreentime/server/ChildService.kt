@@ -100,11 +100,16 @@ class ChildService(
         val now = wallClock.now()
         return try {
             database.transaction { c ->
+                var changed = false
                 for (update in updates.sortedBy { -it.startAgeMillis }) {
-                    if (!upsert(c, childId, update, now)) throw ForeignSessionException()
+                    when (upsert(c, childId, update, now)) {
+                        Upsert.FOREIGN -> throw ForeignSessionException()
+                        Upsert.CHANGED -> changed = true
+                        Upsert.UNCHANGED -> Unit
+                    }
                 }
                 val snapshot = checkNotNull(snapshot(c, childId, now)) { "Das Kind des Kindgeräts fehlt" }
-                SyncResult.Synced(snapshot)
+                SyncResult.Synced(snapshot, changed)
             }
         } catch (_: ForeignSessionException) {
             // Thrown inside the transaction on purpose: everything of this batch is rolled back.
@@ -114,8 +119,11 @@ class ChildService(
 
     private class ForeignSessionException : RuntimeException()
 
-    /** Returns false when the id belongs to a Sitzung of another Kind. */
-    private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant): Boolean {
+    private enum class Upsert { FOREIGN, CHANGED, UNCHANGED }
+
+    /** [Upsert.FOREIGN] when the id belongs to a Sitzung of another Kind, [Upsert.CHANGED] when a Start or Stopp was new. */
+    private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant): Upsert {
+        var changed = false
         val start = now.minusMillis(update.startAgeMillis.coerceAtLeast(0))
         val existing = c.prepareStatement("SELECT child_id, end_at FROM sessions WHERE id = ?").use { st ->
             st.setString(1, update.id)
@@ -128,8 +136,9 @@ class ChildService(
                 it.setLong(3, start.toEpochMilli())
                 it.executeUpdate()
             }
+            changed = true
         } else if (existing.first != childId) {
-            return false
+            return Upsert.FOREIGN
         }
         val endAge = update.endAgeMillis
         if (endAge != null && (existing == null || existing.second == null)) {
@@ -139,10 +148,10 @@ class ChildService(
             ).use {
                 it.setLong(1, now.minusMillis(endAge.coerceAtLeast(0)).toEpochMilli())
                 it.setString(2, update.id)
-                it.executeUpdate()
+                if (it.executeUpdate() > 0) changed = true
             }
         }
-        return true
+        return if (changed) Upsert.CHANGED else Upsert.UNCHANGED
     }
 
     /** The complete Kind-Snapshot for the Kindgerät of [childId]. */
@@ -299,7 +308,8 @@ private fun Wochenvorlage.dtoFor(tag: LocalDate): WeeklyTemplateVersion {
 }
 
 sealed interface SyncResult {
-    data class Synced(val snapshot: ChildSnapshot) : SyncResult
+    /** [changed]: the batch brought a new Start or Stopp (the Elterngeräte get a Resync-Signal). */
+    data class Synced(val snapshot: ChildSnapshot, val changed: Boolean = false) : SyncResult
 
     data class Invalid(val reason: String) : SyncResult
 

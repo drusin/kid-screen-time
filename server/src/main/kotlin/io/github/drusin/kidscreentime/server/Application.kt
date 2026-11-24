@@ -24,9 +24,15 @@ class ServerServices(
     val pairing: PairingService,
     val devices: DeviceService,
     val rateLimiter: FailureRateLimiter,
+    val push: PushService,
 ) {
     companion object {
-        fun create(config: ServerConfig, wallClock: WallClock, monotonicClock: MonotonicClock): ServerServices {
+        fun create(
+            config: ServerConfig,
+            wallClock: WallClock,
+            monotonicClock: MonotonicClock,
+            publisher: PushPublisher = HttpPushPublisher(),
+        ): ServerServices {
             val database = Database.open(config.databasePath)
             val children = ChildService(database, wallClock, config.familyZone)
             return ServerServices(
@@ -37,6 +43,7 @@ class ServerServices(
                 pairing = PairingService(database, wallClock, children),
                 devices = DeviceService(database, wallClock),
                 rateLimiter = FailureRateLimiter(monotonicClock),
+                push = PushService(database, config, publisher),
             )
         }
     }
@@ -59,7 +66,10 @@ fun Application.serverModule(
     services: ServerServices = ServerServices.create(config, wallClock, monotonicClock),
 ) {
     install(ContentNegotiation) { json(ApiJson) }
-    monitor.subscribe(ApplicationStopped) { services.database.close() }
+    monitor.subscribe(ApplicationStopped) {
+        services.push.close()
+        services.database.close()
+    }
     routing {
         port(config.port) {
             get(ApiPaths.HEALTH) {

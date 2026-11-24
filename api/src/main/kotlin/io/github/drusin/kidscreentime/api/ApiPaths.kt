@@ -15,4 +15,7 @@ object ApiPaths {
 
     /** Kindgerät: sync (POST). Sends the Outbox ([ChildSyncRequest]) and returns the complete [ChildSnapshot]. */
     const val CHILD_SYNC = "/api/v1/child/sync"
+
+    /** Both roles: update the own push registration ([PushRegistration]) when it changes (POST, answer `204`). */
+    const val PUSH_REGISTRATION = "/api/v1/push-registration"
 }

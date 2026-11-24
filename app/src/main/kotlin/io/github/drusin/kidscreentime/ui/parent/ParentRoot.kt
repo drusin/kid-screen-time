@@ -18,7 +18,7 @@ import io.github.drusin.kidscreentime.AppContainer
 @Composable
 fun ParentRoot(container: AppContainer) {
     val home = viewModel<ParentHomeViewModel>(factory = viewModelFactory {
-        initializer { ParentHomeViewModel(container.parentRepository) }
+        initializer { ParentHomeViewModel(container.parentRepository, container.pushHandler.signals) }
     })
     var pairingOpenings by rememberSaveable { mutableIntStateOf(0) }
     var pairingOpen by rememberSaveable { mutableStateOf(false) }

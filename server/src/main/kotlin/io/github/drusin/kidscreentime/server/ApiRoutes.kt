@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.api.ErrorResponse
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.ParentSnapshot
+import io.github.drusin.kidscreentime.api.PushRegistration
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeRequest
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -24,16 +25,21 @@ import io.ktor.server.routing.post
  * `401` without or with an invalid or entkoppelt token, `403` for the wrong role, otherwise the handler runs.
  */
 fun Route.authenticatedGet(path: String, services: ServerServices, role: DeviceRole, handler: suspend RoutingContext.(Device) -> Unit) {
-    get(path) { withDevice(services, role, handler) }
+    get(path) { withDevice(services, setOf(role), handler) }
 }
 
 fun Route.authenticatedPost(path: String, services: ServerServices, role: DeviceRole, handler: suspend RoutingContext.(Device) -> Unit) {
-    post(path) { withDevice(services, role, handler) }
+    post(path) { withDevice(services, setOf(role), handler) }
+}
+
+/** For the few endpoints that both roles use (push registration): `403` only when the role is in neither of [roles]. */
+fun Route.authenticatedPost(path: String, services: ServerServices, roles: Set<DeviceRole>, handler: suspend RoutingContext.(Device) -> Unit) {
+    post(path) { withDevice(services, roles, handler) }
 }
 
 private suspend fun RoutingContext.withDevice(
     services: ServerServices,
-    role: DeviceRole,
+    roles: Set<DeviceRole>,
     handler: suspend RoutingContext.(Device) -> Unit,
 ) {
     val token = call.request.header("Authorization")
@@ -42,7 +48,7 @@ private suspend fun RoutingContext.withDevice(
     val device = token?.takeIf { it.isNotEmpty() }?.let(services.devices::authenticate)
     when {
         device == null -> call.respond(HttpStatusCode.Unauthorized)
-        device.role != role -> call.respond(HttpStatusCode.Forbidden)
+        device.role !in roles -> call.respond(HttpStatusCode.Forbidden)
         else -> handler(device)
     }
 }
@@ -57,6 +63,14 @@ fun Route.apiRoutes(services: ServerServices) {
         if (request.deviceName.isBlank()) {
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("Gerätename fehlt"))
             return@post
+        }
+        request.push?.let {
+            try {
+                services.push.validate(it)
+            } catch (e: InvalidPushRegistrationException) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "Push-Registrierung ungültig"))
+                return@post
+            }
         }
         when (val result = services.pairing.redeem(request.code, request.deviceName.trim(), request.push)) {
             is RedeemResult.Paired -> call.respond(result.response)
@@ -109,6 +123,19 @@ fun Route.apiRoutes(services: ServerServices) {
         )
     }
 
+    // Both roles keep their UnifiedPush endpoint and WebPush keys up to date here (they change with the distributor).
+    authenticatedPost(ApiPaths.PUSH_REGISTRATION, services, setOf(DeviceRole.PARENT, DeviceRole.CHILD)) { device ->
+        val registration = call.receive<PushRegistration>()
+        try {
+            services.push.validate(registration)
+        } catch (e: InvalidPushRegistrationException) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "Push-Registrierung ungültig"))
+            return@authenticatedPost
+        }
+        services.push.register(device.id, registration)
+        call.respond(HttpStatusCode.NoContent)
+    }
+
     // The sync of the Kindgerät: upserts the Sitzungen of its Outbox, answers with the complete Kind-Snapshot.
     authenticatedPost(ApiPaths.CHILD_SYNC, services, DeviceRole.CHILD) { device ->
         val childId = device.childId
@@ -118,7 +145,11 @@ fun Route.apiRoutes(services: ServerServices) {
         }
         val request = call.receive<ChildSyncRequest>()
         when (val result = services.children.sync(childId, request.sessions)) {
-            is SyncResult.Synced -> call.respond(result.snapshot)
+            is SyncResult.Synced -> {
+                call.respond(result.snapshot)
+                // After the answer: publishing never delays the Kindgerät. Elterngeräte learn about a new Start or Stopp.
+                if (result.changed) services.push.signalParents()
+            }
             is SyncResult.Invalid -> call.respond(HttpStatusCode.BadRequest, ErrorResponse(result.reason))
             SyncResult.ForeignSession -> call.respond(HttpStatusCode.Forbidden, ErrorResponse("Die Sitzung gehört zu einem anderen Kind"))
         }
