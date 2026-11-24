@@ -4,7 +4,7 @@ Label: wayfinder:map
 
 ## Destination
 
-Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Familien-App, mit der Eltern ein tägliches Bildschirmzeit-Kontingent (Wochenvorlage + Tagesausnahmen) verwalten und das Kind am Tablet eine Sitzung startet und stoppt. Am Ende klingelt ein zuverlässiger Alarm auf dem Samsung-Tablet. Gebaut wird danach, nicht in dieser Map.
+Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Familien-App, mit der Eltern ein tägliches Bildschirmzeit-Kontingent (Wochenvorlage + Tagesanpassungen) verwalten und das Kind am Tablet eine Sitzung startet und stoppt. Am Ende klingelt ein zuverlässiger Alarm auf dem Samsung-Tablet. Gebaut wird danach, nicht in dieser Map.
 
 ## Notes
 
@@ -23,7 +23,7 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
   - Funktioniert überall, wo Internet vorhanden ist.
   - **Keine laufenden Kosten** (keine kostenpflichtigen Dienste).
   - Erst ein Kind. Das Modell muss für mehrere Kinder erweiterbar sein.
-  - Restzeit verfällt am Tagesende. Nach Ablauf zählt die Zeit als Überziehung weiter. Bonuszeit gibt es über eine Tagesausnahme.
+  - Restzeit verfällt am Tagesende. Nach Ablauf zählt die Zeit als Überziehung weiter. Bonuszeit gibt es über eine Tagesanpassung.
   - Verlauf: einfache Liste von Sitzungen und Tagesverbrauch, keine Statistik.
   - Das Kind sieht Restzeit, Start/Stopp und das heutige Kontingent, aber keine Einstellungen.
 - Stack-Präferenzen des Nutzers: kann JS/TS (Vue) und Java. Kotlin ist ok, weil Claude baut.
@@ -36,12 +36,13 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie klingelt ein Alarm auf Samsung-Android zuverlässig im Hintergrund und Standby?](issues/01-alarm-zuverlaessig-android.md): nur nativ, Kotlin-Alarmkern mit `setAlarmClock` + `USE_EXACT_ALARM` + Alarm-Stream. Eine PWA scheidet fürs Kindgerät aus, die UI kann trotzdem Capacitor/Vue sein
 - [Wie erreichen Server-Ereignisse kostenlos die Android-Geräte?](issues/02-push-ohne-kosten.md): self-hosted ntfy + UnifiedPush als „resync“-Signal, FCM als Plan B
 - [Wie kommen APK und Updates ohne Play Store auf die Geräte?](issues/03-apk-verteilung-updates.md): GitHub Releases + Obtainium, kostenloses „limited distribution“-Konto für Googles Entwicklerverifizierung ab 2027, ein Release-Keystore
+- [Wie verhalten sich Kontingent und Sitzung in den Randfällen?](issues/04-domaenenregeln-randfaelle.md): Tagesanpassung als ±Delta nur für heute, Wochenvorlage gilt ab morgen, kein Start bei Restzeit ≤ 0, Neuberechnung des Alarms bei Änderung, Automatischer Stopp nach Überziehungsgrenze, eine Familien-Zeitzone, Start/Stopp offline-fähig
 
 ## Not yet specified
 
 - **Deployment im Homelab**: Compose-Setup, Subdomain/Reverse-Proxy-Anbindung, Backups der Daten. Hängt von der Backend-Wahl ab.
 - **Build & Release**: Wie wird die APK gebaut (lokal vs. GitHub Actions), und wie wird sie signiert? Hängt vom Stack und vom Update-Weg ab.
-- **Synchronisation während einer laufenden Sitzung**: Was passiert genau, wenn die Eltern das Kontingent ändern, während der Timer läuft, oder das Tablet die Verbindung verliert? Protokoll und Mechanismus hängen von Push-Recherche und Architektur ab.
+- **Synchronisation während einer laufenden Sitzung**: Das fachliche Verhalten steht fest (Randfall-Regeln). Offen ist das Protokoll: Wie werden offline gepufferte Start- und Stopp-Ereignisse übertragen und mit dem Serverstand zusammengeführt (Idempotenz, Reihenfolge, Konflikt mit einer Tagesanpassung, die inzwischen gebucht wurde)? Hängt von Backend-Stack und API-Form ab.
 - **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Erst relevant, wenn Datenmodell und UI stehen.
 - **Lebenszeichen des Kindgeräts**: Der Server merkt, wenn das Kindgerät sich nicht mehr meldet (deinstalliert, ausgeschaltet), und benachrichtigt die Eltern? Ob und wie, ist noch unscharf.
 - **Teststrategie**: Insbesondere, wie man das Alarmverhalten (Standby, Doze) verifiziert.
@@ -52,3 +53,4 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - Veröffentlichung im Play Store, iOS-Unterstützung.
 - Automatische Erkennung der Nutzung (Bildschirmzeit wird manuell per Sitzung erfasst).
 - Statistiken und Diagramme.
+- Nachträgliches Bearbeiten, Löschen oder Nachtragen von Sitzungen durch die Eltern: für v1 bewusst ausgeschlossen (entschieden in [Wie verhalten sich Kontingent und Sitzung in den Randfällen?](issues/04-domaenenregeln-randfaelle.md)).
