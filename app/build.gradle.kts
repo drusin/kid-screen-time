@@ -4,6 +4,19 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Version: the Git tag is the only source (ticket 18). CI passes it as env RELEASE_TAG or -PreleaseTag (e.g. v1.2.3).
+// Without a tag (local builds, normal CI) the version is 0.0.0-dev.
+val releaseTag: String? = (providers.gradleProperty("releaseTag").orNull ?: providers.environmentVariable("RELEASE_TAG").orNull)
+    ?.trim()?.takeIf { it.isNotEmpty() }
+val tagVersion = releaseTag?.let {
+    Regex("""v(\d{1,2})\.(\d{1,2})\.(\d{1,2})""").matchEntire(it)
+        ?: throw GradleException("Release-Tag '$it' hat nicht die Form vX.Y.Z (je Teil 0-99)")
+}?.destructured?.let { (x, y, z) -> Triple(x.toInt(), y.toInt(), z.toInt()) }
+
+// Release signing: only from environment variables (CI secret of the tag workflow), never from the repo.
+// Without them the release APK stays unsigned, so `./gradlew build` works locally and in normal CI.
+val releaseKeystorePath: String? = providers.environmentVariable("RELEASE_KEYSTORE_FILE").orNull?.takeIf { it.isNotBlank() }
+
 // AGP 9 has built-in Kotlin support: no separate kotlin-android plugin.
 android {
     namespace = "io.github.drusin.kidscreentime"
@@ -16,9 +29,20 @@ android {
         applicationId = "io.github.drusin.kidscreentime"
         minSdk = 33
         targetSdk = 36
-        // Placeholder for local builds. The release pipeline (ticket 18) derives both from the Git tag.
-        versionCode = 1
-        versionName = "0.0.0-dev"
+        // versionName = tag, versionCode = X*10000 + Y*100 + Z; local builds without a tag: 1 / 0.0.0-dev.
+        versionCode = tagVersion?.let { (x, y, z) -> x * 10000 + y * 100 + z } ?: 1
+        versionName = releaseTag?.removePrefix("v") ?: "0.0.0-dev"
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("RELEASE_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").get()
+            }
+        }
     }
 
     // German only.
@@ -33,6 +57,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
