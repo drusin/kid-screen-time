@@ -40,10 +40,11 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie werden Geräte gekoppelt und der Server abgesichert?](issues/05-kopplung-sicherheit.md): keine Konten, ein Geräte-Token mit Rolle pro Gerät, einmaliger Kopplungscode (QR, 10 min), Admin-Webformular (nur Heimnetz + Passwort) für das erste Elterngerät und die Recovery, ein Kindgerät pro Kind, WebPush-verschlüsselter Push-Payload
 - [Welche App-Architektur und welcher Stack?](issues/06-app-architektur-stack.md): eine native Kotlin/Compose-App für beide Rollen (`minSdk 33`, Material 3, nur Deutsch), reines Kotlin-Modul `domain` für die Regeln, Room + Ktor Client, Eltern-Aktionen nur online, Einrichtungs-Checkliste am Kindgerät, ntfy-App als UnifiedPush-Verteiler
 - [Welcher Backend-Stack, welche Persistenz und welche API-Form?](issues/07-backend-stack-persistenz.md): Kotlin + Ktor mit geteilten Modulen `domain`/`api` im Monorepo, SQLite im Volume, REST/JSON-Stand-Snapshot (Push nur als Signal), Compose mit Server + ntfy, Server plant zeitgesteuerte Ereignisse im Prozess und verschickt alle Eltern-Benachrichtigungen, JRE 25
+- [Wie sehen Kind- und Eltern-Oberfläche aus?](issues/08-ui-prototyp.md): Kindgerät mit Restzeit-Ring und großem Start/Stopp-Knopf (Variante A), Elterngerät als ein scrollender Bildschirm mit Status, Stepper-Tagesanpassung und Wochenvorlage-Dialog, Regeln und Geräte im ⋮-Menü (Variante B), Alarm als Vollbild, eigene Zustandsfarben
 
 ## Not yet specified
 
-- **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Erst relevant, wenn Datenmodell und UI stehen.
+- **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Die gewählte Eltern-Oberfläche (ein Bildschirm) braucht dann eine Kind-Auswahl.
 - **Lebenszeichen des Kindgeräts**: Der Server merkt, wenn das Kindgerät sich nicht mehr meldet (deinstalliert, ausgeschaltet), und benachrichtigt die Eltern? Ob und wie, ist noch unscharf.
 - **Teststrategie**: Insbesondere, wie man das Alarmverhalten (Standby, Doze) verifiziert.
 
