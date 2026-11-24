@@ -9,6 +9,10 @@
         android:label="@string/app_name"
         android:supportsRtl="false"
         android:theme="@style/Theme.KidScreenTime">
+        <!-- Google Code Scanner: Play services download the scanner module in the background after install. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

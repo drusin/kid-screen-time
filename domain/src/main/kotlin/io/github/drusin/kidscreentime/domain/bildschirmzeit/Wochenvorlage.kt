@@ -24,6 +24,10 @@ data class WochenvorlageVersion(
             return WochenvorlageVersion(gueltigAb, DayOfWeek.entries.zip(minuten.toList()).toMap())
         }
 
+        /** Standardwerte für ein neues Kind: Werktage 60 min, Samstag und Sonntag 120 min. */
+        fun standard(gueltigAb: LocalDate): WochenvorlageVersion =
+            ausMontagBisSonntag(gueltigAb, 60, 60, 60, 60, 60, 120, 120)
+
         /** An jedem Wochentag derselbe Wert. */
         fun gleichbleibend(gueltigAb: LocalDate, minuten: Int): WochenvorlageVersion =
             WochenvorlageVersion(gueltigAb, DayOfWeek.entries.associateWith { minuten })
@@ -46,9 +50,13 @@ data class Wochenvorlage(val versionen: List<WochenvorlageVersion>) {
      * Vor der ersten Version ist der Wert 0.
      */
     fun fuer(tag: LocalDate): Duration {
-        val version = versionen.filter { it.gueltigAb <= tag }.maxByOrNull { it.gueltigAb } ?: return Duration.ZERO
+        val version = version(tag) ?: return Duration.ZERO
         return Duration.ofMinutes(version.minuten.getValue(tag.dayOfWeek).toLong())
     }
+
+    /** Die Version, die um 00:00 von [tag] galt, oder null vor der ersten Version. */
+    fun version(tag: LocalDate): WochenvorlageVersion? =
+        versionen.filter { it.gueltigAb <= tag }.maxByOrNull { it.gueltigAb }
 
     companion object {
         fun von(vararg versionen: WochenvorlageVersion) = Wochenvorlage(versionen.toList())

@@ -31,6 +31,7 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 ## Server-Muster
 
 - Test-Setup: `TestServer(dir)` (`server/src/test/.../TestServer.kt`) bringt echte SQLite-Datei im `@TempDir`, `ManualClock`, Config und `ServerServices`. Ablauf: `val server = TestServer(dir).also { it.install(this) }` in `testApplication`, `server.client(this)` liefert den JSON-Client. Public-API auf `TestServer.PUBLIC` (Port 8080), Admin auf `TestServer.ADMIN` (8081); immer volle URLs. Ein zweites `TestServer` auf demselben Ordner simuliert einen Neustart. `pairDevice(client, role)` koppelt ein Gerät und liefert das Token.
+- Kinder entstehen nur beim Einlösen eines Kindgerät-Codes (`ChildService.create`, mit Standardvorlage). Die Werte für Snapshots rechnet immer `domain` (`ChildService` lädt nur die Eingaben). Tabellen `sessions` und `daily_adjustments` existieren (Migration 002), die Schreibwege kommen mit Tickets 05 und 09.
 - Neuer geschützter Endpunkt: in `ApiRoutes.kt` mit `authenticatedGet/Post(path, services, DeviceRole.X) { device -> ... }` definieren. Das erzwingt `401` (kein/ungültiges/entkoppeltes Token) und `403` (falsche Rolle) einheitlich. Pfade und DTOs gehören nach `api`. Jede Rolle braucht Tests für 401 und 403.
 - Datenbank: `Database.transaction { connection -> ... }` mit plain JDBC. Schemaänderung = neue Datei `server/src/main/resources/db/migration/NNN_*.sql` plus Eintrag in `Database.MIGRATIONS`, alte Dateien nie ändern.
 - Fehlversuche (Code, Passwort) laufen über den einen `FailureRateLimiter`. Admin-Routen nur in `AdminRoutes.kt` (Admin-Port), API nur in `ApiRoutes.kt` (öffentlicher Port).
@@ -41,6 +42,9 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 - DI: `AppContainer` (manuell) hält HTTP-Client, `PairingRepository` und `ParentRepository`; `KidScreenTimeApp.container` ist die einzige Instanz. Neue Repositories dort eintragen.
 - Navigation: `ui/AppRoot.kt` wählt den Bildschirm anhand von `DeviceState` (ungekoppelt, Eltern, Kind). Kein NavHost; Bildschirme innerhalb einer Rolle bekommen ihren eigenen Zustand im ViewModel.
 - HTTP: `createHttpClient(engine)` (Ktor, JSON mit `ignoreUnknownKeys`, Timeouts, wirft nicht bei HTTP-Fehlern). Authentifizierte Aufrufe: `bearerAuth(pairing.token())`, URL = `device.serverUrl + ApiPaths.X`. Netzfehler und Status in ein Ergebnis-Sealed-Interface übersetzen (siehe `SnapshotResult`).
+- Room: eine Datenbank `AppDatabase` im `AppContainer`. Neue Entität = Entität eintragen, `version` erhöhen, `Migration` schreiben; das exportierte Schema liegt in `app/schemas` und wird mit committet. Tests: `TestContainer.database` (In-Memory).
+- Uhr eines Bildschirms: das ViewModel bietet `tick()`, die UI ruft es per `EverySecond { }` auf. Keine endlosen `delay`-Loops im ViewModel (hängen `runTest`).
+- QR: Inhalt über `PairingQr` (`api`), Anzeige `QrCode` (ZXing), Scannen nur über das `QrScanner`-Interface (Google Code Scanner, ohne Kamera-Berechtigung). Tests rufen `onQrResult` auf.
 - Token: nur über `TokenStore`. Tests nutzen `FakeTokenStore`, nie den Keystore.
 - ViewModel-Tests: `ui/Fixtures.kt` mit `TestContainer` (Fake-Token-Speicher, `MockEngine` über `handler`) und `StateFlow.await { }`, weil MockEngine im Hintergrund antwortet. `Dispatchers.setMain(UnconfinedTestDispatcher())` im `@Before`.
 

@@ -1,28 +1,20 @@
 package io.github.drusin.kidscreentime.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.drusin.kidscreentime.AppContainer
-import io.github.drusin.kidscreentime.R
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceScreen
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceViewModel
-import io.github.drusin.kidscreentime.ui.parent.ParentHomeScreen
-import io.github.drusin.kidscreentime.ui.parent.ParentHomeViewModel
+import io.github.drusin.kidscreentime.ui.child.ChildHomeScreen
+import io.github.drusin.kidscreentime.ui.child.ChildHomeViewModel
+import io.github.drusin.kidscreentime.ui.parent.ParentRoot
 
 /**
  * Navigation: no NavHost. The root screen follows the [DeviceState] (not paired, Elterngerät, Kindgerät), because
@@ -36,17 +28,15 @@ fun AppRoot(container: AppContainer) {
             viewModel(factory = viewModelFactory {
                 initializer { PairDeviceViewModel(container.pairingRepository, container.defaultDeviceName) }
             }),
+            scanner = container.qrScannerFactory(LocalContext.current),
         )
         is DeviceState.Paired -> when (state.device.role) {
-            DeviceRole.PARENT -> ParentHomeScreen(
+            DeviceRole.PARENT -> ParentRoot(container)
+            DeviceRole.CHILD -> ChildHomeScreen(
                 viewModel(factory = viewModelFactory {
-                    initializer { ParentHomeViewModel(container.parentRepository) }
+                    initializer { ChildHomeViewModel(container.childRepository, container.wallClock) }
                 }),
             )
-            // The Kindgerät screens come with ticket 04.
-            DeviceRole.CHILD -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.child_device_placeholder), style = MaterialTheme.typography.bodyLarge)
-            }
         }
     }
 }

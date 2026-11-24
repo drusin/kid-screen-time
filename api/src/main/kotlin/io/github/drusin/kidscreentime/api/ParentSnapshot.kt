@@ -13,9 +13,20 @@ data class DeviceInfo(
     val lastSeenEpochMillis: Long? = null,
 )
 
-/** A Kind in the Eltern-Snapshot. Later tickets add the status, Wochenvorlage and Verlauf (optional fields). */
+/**
+ * A Kind in the Eltern-Snapshot: the same [status] the Kindgerät shows, plus the rules. Later tickets add
+ * "Stand bekannt seit", Checkliste and Verlauf (optional fields).
+ */
 @Serializable
-data class ParentChildSnapshot(val childId: String, val name: String)
+data class ParentChildSnapshot(
+    val childId: String,
+    val name: String,
+    val status: ChildStatus? = null,
+    val warningThresholdMinutes: Int? = null,
+    val overrunLimitMinutes: Int? = null,
+    /** The Wochenvorlage version that is valid today. */
+    val weeklyTemplate: WeeklyTemplateVersion? = null,
+)
 
 /** Complete state for a Elterngerät. Always the full state, never deltas. */
 @Serializable

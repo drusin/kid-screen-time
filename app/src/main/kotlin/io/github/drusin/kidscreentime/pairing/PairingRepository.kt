@@ -28,6 +28,9 @@ sealed interface PairResult {
     data object InvalidServerUrl : PairResult
     data object InvalidCode : PairResult
     data object RateLimited : PairResult
+
+    /** `409`: the Kind already has a Kindgerät and replacing it is not possible yet (ticket 12). */
+    data object ChildHasDevice : PairResult
     data object ServerUnreachable : PairResult
     data object UnexpectedError : PairResult
 }
@@ -77,6 +80,7 @@ class PairingRepository(
             }
             HttpStatusCode.BadRequest -> PairResult.InvalidCode
             HttpStatusCode.TooManyRequests -> PairResult.RateLimited
+            HttpStatusCode.Conflict -> PairResult.ChildHasDevice
             else -> PairResult.UnexpectedError
         }
     }

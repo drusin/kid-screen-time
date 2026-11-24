@@ -6,6 +6,7 @@ import io.github.drusin.kidscreentime.api.RedeemPairingCodeResponse
 import io.github.drusin.kidscreentime.domain.clock.WallClock
 import java.security.SecureRandom
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 /** A freshly created Kopplungscode. The plain [code] exists only here; the database keeps its hash. */
@@ -16,12 +17,19 @@ sealed interface RedeemResult {
 
     /** Unknown, expired or already used. The three cases are deliberately indistinguishable. */
     data object InvalidCode : RedeemResult
+
+    /**
+     * The Kind already has an active Kindgerät. The code stays unused. Replacing the old Kindgerät comes with
+     * ticket 12; until then the unique index "one active Kindgerät per Kind" is enforced with this answer.
+     */
+    data object ChildHasDevice : RedeemResult
 }
 
 /** Creating and redeeming Kopplungscodes (einmalig, 10 minutes valid, stored only as hash). */
 class PairingService(
     private val database: Database,
     private val wallClock: WallClock,
+    private val children: ChildService,
     private val random: SecureRandom = SecureRandom(),
 ) {
     /**
@@ -70,6 +78,10 @@ class PairingService(
                 }
             } ?: return@transaction RedeemResult.InvalidCode
 
+            if (found.childId != null && children.activeChildDeviceName(c, found.childId) != null) {
+                return@transaction RedeemResult.ChildHasDevice
+            }
+
             c.prepareStatement("UPDATE pairing_codes SET redeemed_at = ? WHERE id = ?").use {
                 it.setLong(1, now)
                 it.setString(2, found.id)
@@ -79,14 +91,8 @@ class PairingService(
             var childId = found.childId
             var childName: String? = null
             if (found.newChildName != null) {
-                childId = UUID.randomUUID().toString()
                 childName = found.newChildName
-                c.prepareStatement("INSERT INTO children (id, name, created_at) VALUES (?,?,?)").use {
-                    it.setString(1, childId)
-                    it.setString(2, childName)
-                    it.setLong(3, now)
-                    it.executeUpdate()
-                }
+                childId = children.create(c, childName, Instant.ofEpochMilli(now))
             } else if (childId != null) {
                 childName = c.prepareStatement("SELECT name FROM children WHERE id = ?").use { st ->
                     st.setString(1, childId)

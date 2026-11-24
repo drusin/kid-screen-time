@@ -1,6 +1,9 @@
 package io.github.drusin.kidscreentime.ui
 
+import io.github.drusin.kidscreentime.api.DeviceRole
+import io.github.drusin.kidscreentime.api.PairingQr
 import io.github.drusin.kidscreentime.pairing.DeviceState
+import io.github.drusin.kidscreentime.qr.QrScanResult
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceViewModel
 import io.github.drusin.kidscreentime.ui.pairing.PairError
 import io.ktor.client.engine.mock.respond
@@ -90,5 +93,58 @@ class PairDeviceViewModelTest {
         viewModel.state.await { !it.submitting }
 
         assertEquals(PairError.SERVER_UNREACHABLE, viewModel.state.value.error)
+    }
+
+    @Test
+    fun `Ein gescannter Kopplungs-QR-Code füllt Server-URL und Code und koppelt sofort`() = runTest {
+        app.handler = { respondJson("""{"deviceId":"d1","deviceToken":"tok","role":"CHILD","childId":"k1","childName":"Mia"}""") }
+        val viewModel = viewModel()
+
+        viewModel.onQrResult(QrScanResult.Scanned(PairingQr.encode("https://kst.example.org", "ABCD-EFGH")))
+        viewModel.state.await { !it.submitting }
+
+        assertEquals("https://kst.example.org", viewModel.state.value.serverUrl)
+        assertEquals("ABCD-EFGH", viewModel.state.value.code)
+        val paired = assertIs<DeviceState.Paired>(app.container.pairingRepository.state.value)
+        assertEquals(DeviceRole.CHILD, paired.device.role)
+        assertEquals("Mia", paired.device.childName)
+    }
+
+    @Test
+    fun `Ein fremder QR-Code zeigt einen Fehler und koppelt nicht`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onQrResult(QrScanResult.Scanned("https://example.org/irgendwas"))
+
+        assertEquals(PairError.INVALID_QR, viewModel.state.value.error)
+        assertEquals(DeviceState.Unpaired, app.container.pairingRepository.state.value)
+        assertTrue(app.requests.isEmpty())
+    }
+
+    @Test
+    fun `Abbrechen des Scanners ändert nichts, ein nicht verfügbarer Scanner verweist auf das Eintippen`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onQrResult(QrScanResult.Cancelled)
+        assertNull(viewModel.state.value.error)
+
+        viewModel.onQrResult(QrScanResult.Unavailable)
+        assertEquals(PairError.SCANNER_UNAVAILABLE, viewModel.state.value.error)
+        viewModel.onServerUrlChange("kst.example.org")
+        assertNull(viewModel.state.value.error)
+    }
+
+    @Test
+    fun `Hat das Kind schon ein Kindgerät, meldet die Kopplung den Konflikt`() = runTest {
+        app.handler = { respond("", HttpStatusCode.Conflict) }
+        val viewModel = viewModel()
+        viewModel.onServerUrlChange("kst.example.org")
+        viewModel.onCodeChange("ABCD-EFGH")
+
+        viewModel.submit()
+        viewModel.state.await { !it.submitting }
+
+        assertEquals(PairError.CHILD_HAS_DEVICE, viewModel.state.value.error)
+        assertEquals(DeviceState.Unpaired, app.container.pairingRepository.state.value)
     }
 }

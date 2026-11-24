@@ -3,12 +3,15 @@ package io.github.drusin.kidscreentime.server
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.ErrorResponse
-import io.github.drusin.kidscreentime.api.ParentChildSnapshot
+import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
+import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeRequest
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -56,6 +59,8 @@ fun Route.apiRoutes(services: ServerServices) {
         }
         when (val result = services.pairing.redeem(request.code, request.deviceName.trim(), request.push)) {
             is RedeemResult.Paired -> call.respond(result.response)
+            RedeemResult.ChildHasDevice ->
+                call.respond(HttpStatusCode.Conflict, ErrorResponse("Das Kind hat schon ein Kindgerät. Das Ersetzen ist noch nicht möglich."))
             RedeemResult.InvalidCode -> {
                 services.rateLimiter.recordFailure()
                 call.respond(HttpStatusCode.BadRequest, ErrorResponse("Kopplungscode ungültig oder abgelaufen"))
@@ -66,10 +71,51 @@ fun Route.apiRoutes(services: ServerServices) {
     authenticatedGet(ApiPaths.PARENT_SNAPSHOT, services, DeviceRole.PARENT) {
         call.respond(parentSnapshot(services))
     }
+
+    authenticatedPost(ApiPaths.PARENT_PAIRING_CODES, services, DeviceRole.PARENT) {
+        val request = call.receive<CreatePairingCodeRequest>()
+        val childName = request.newChildName?.trim()
+        val problem = when (request.role) {
+            DeviceRole.PARENT ->
+                if (request.childId != null || request.newChildName != null) "Ein Elterngerät gehört zu keinem Kind" else null
+            DeviceRole.CHILD -> when {
+                (request.childId != null) == (request.newChildName != null) -> "Ein Kindgerät braucht das Kind oder den Namen eines neuen Kindes"
+                request.childId != null && !services.children.exists(request.childId!!) -> "Das Kind ist unbekannt"
+                childName != null && childName.isEmpty() -> "Der Name des Kindes fehlt"
+                childName != null && services.children.count() > 0 -> "Es gibt schon ein Kind"
+                else -> null
+            }
+        }
+        if (problem != null) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(problem))
+            return@authenticatedPost
+        }
+        val created = services.pairing.createCode(request.role, request.childId, childName)
+        val childId = request.childId
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        call.respond(
+            CreatePairingCodeResponse(
+                code = created.code,
+                expiresAtEpochMillis = created.expiresAtEpochMillis,
+                serverTimeEpochMillis = services.wallClock.now().toEpochMilli(),
+                serverUrl = services.config.publicServerUrl,
+                role = request.role,
+                childId = childId,
+                childName = childName ?: childId?.let { services.children.parentChildren().firstOrNull { c -> c.childId == it }?.name },
+                replacesDeviceName = if (request.role == DeviceRole.CHILD && childId != null) services.children.activeChildDeviceName(childId) else null,
+                snapshot = parentSnapshot(services),
+            ),
+        )
+    }
+
+    authenticatedGet(ApiPaths.CHILD_SNAPSHOT, services, DeviceRole.CHILD) { device ->
+        val snapshot = device.childId?.let(services.children::childSnapshot)
+        if (snapshot == null) call.respond(HttpStatusCode.Unauthorized) else call.respond(snapshot)
+    }
 }
 
 private fun parentSnapshot(services: ServerServices) = ParentSnapshot(
     serverTimeEpochMillis = services.wallClock.now().toEpochMilli(),
     devices = services.devices.listActive(),
-    children = emptyList<ParentChildSnapshot>(),
+    children = services.children.parentChildren(),
 )

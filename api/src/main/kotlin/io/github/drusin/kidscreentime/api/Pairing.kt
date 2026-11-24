@@ -27,3 +27,34 @@ data class RedeemPairingCodeResponse(
     val childId: String? = null,
     val childName: String? = null,
 )
+
+/**
+ * Request of a Elterngerät to create a Kopplungscode. For [DeviceRole.CHILD] give exactly one of [childId]
+ * (existing Kind) and [newChildName] (only while there is no Kind yet; the Kind is created at the Kopplung).
+ * For [DeviceRole.PARENT] give neither.
+ */
+@Serializable
+data class CreatePairingCodeRequest(
+    val role: DeviceRole,
+    val childId: String? = null,
+    val newChildName: String? = null,
+)
+
+/**
+ * A new Kopplungscode, valid until [expiresAtEpochMillis] (server time). [serverTimeEpochMillis] lets the
+ * device count down without trusting its own wall clock. [replacesDeviceName] is set when the Kind already
+ * has a Kindgerät: the new one replaces it (Ersetzen-Hinweis). Like every Eltern-Aktion it returns the new
+ * [snapshot].
+ */
+@Serializable
+data class CreatePairingCodeResponse(
+    val code: String,
+    val expiresAtEpochMillis: Long,
+    val serverTimeEpochMillis: Long,
+    val serverUrl: String,
+    val role: DeviceRole,
+    val childId: String? = null,
+    val childName: String? = null,
+    val replacesDeviceName: String? = null,
+    val snapshot: ParentSnapshot,
+)

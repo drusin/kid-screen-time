@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 // AGP 9 has built-in Kotlin support: no separate kotlin-android plugin.
@@ -62,6 +63,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+// Room exports its schema as JSON (committed in app/schemas): later tickets add entities and migrations against it.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(project(":domain"))
     implementation(project(":api"))
@@ -77,6 +83,11 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.zxing.core)
+    implementation(libs.play.services.code.scanner)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)

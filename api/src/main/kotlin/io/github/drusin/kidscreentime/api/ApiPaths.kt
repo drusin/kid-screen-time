@@ -9,4 +9,10 @@ object ApiPaths {
 
     /** Elterngerät: Eltern-Snapshot. */
     const val PARENT_SNAPSHOT = "/api/v1/parent/snapshot"
+
+    /** Elterngerät: create a Kopplungscode (POST). */
+    const val PARENT_PAIRING_CODES = "/api/v1/parent/pairing-codes"
+
+    /** Kindgerät: Kind-Snapshot (GET). Ticket 05 adds the sync (POST) that returns the same snapshot. */
+    const val CHILD_SNAPSHOT = "/api/v1/child/snapshot"
 }

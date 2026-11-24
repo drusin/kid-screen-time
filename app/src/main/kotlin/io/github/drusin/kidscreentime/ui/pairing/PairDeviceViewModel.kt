@@ -2,15 +2,17 @@ package io.github.drusin.kidscreentime.ui.pairing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.drusin.kidscreentime.api.PairingQr
 import io.github.drusin.kidscreentime.pairing.PairResult
 import io.github.drusin.kidscreentime.pairing.PairingRepository
+import io.github.drusin.kidscreentime.qr.QrScanResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class PairError { INVALID_SERVER_URL, INVALID_CODE, RATE_LIMITED, SERVER_UNREACHABLE, UNEXPECTED }
+enum class PairError { INVALID_SERVER_URL, INVALID_CODE, RATE_LIMITED, SERVER_UNREACHABLE, CHILD_HAS_DEVICE, INVALID_QR, SCANNER_UNAVAILABLE, UNEXPECTED }
 
 data class PairDeviceUiState(
     val serverUrl: String = "",
@@ -34,6 +36,26 @@ class PairDeviceViewModel(
     fun onCodeChange(value: String) = _state.update { it.copy(code = value, error = null) }
     fun onDeviceNameChange(value: String) = _state.update { it.copy(deviceName = value, error = null) }
 
+    /**
+     * Result of the QR scanner. A valid Kopplungs-QR-Code fills Server-URL and Code and pairs right away
+     * (the tablet has nothing more to type). Typing keeps working as before.
+     */
+    fun onQrResult(result: QrScanResult) {
+        when (result) {
+            QrScanResult.Cancelled -> Unit
+            QrScanResult.Unavailable -> _state.update { it.copy(error = PairError.SCANNER_UNAVAILABLE) }
+            is QrScanResult.Scanned -> {
+                val content = PairingQr.parse(result.text)
+                if (content == null) {
+                    _state.update { it.copy(error = PairError.INVALID_QR) }
+                } else {
+                    _state.update { it.copy(serverUrl = content.serverUrl, code = content.code, error = null) }
+                    submit()
+                }
+            }
+        }
+    }
+
     fun submit() {
         val current = _state.value
         if (!current.canSubmit) return
@@ -48,6 +70,7 @@ class PairDeviceViewModel(
                         PairResult.InvalidServerUrl -> PairError.INVALID_SERVER_URL
                         PairResult.InvalidCode -> PairError.INVALID_CODE
                         PairResult.RateLimited -> PairError.RATE_LIMITED
+                        PairResult.ChildHasDevice -> PairError.CHILD_HAS_DEVICE
                         PairResult.ServerUnreachable -> PairError.SERVER_UNREACHABLE
                         PairResult.UnexpectedError -> PairError.UNEXPECTED
                     },

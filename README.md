@@ -39,6 +39,6 @@ Umgebungsvariablen. Fehlt eine Pflichtvariable, startet der Server nicht.
 | `DATABASE_PATH` | nein | SQLite-Datei, Standard `data/kid-screen-time.db` |
 | `PORT` / `ADMIN_PORT` | nein | öffentlicher Port (8080) und Admin-Port (8081, nicht ins Internet publizieren) |
 
-Erstes Elterngerät koppeln: `http://<Server>:<ADMIN_PORT>/admin` im Heimnetz öffnen, Passwort eingeben, den Code samt Server-URL in der App unter „Gerät koppeln“ eintragen.
+Erstes Elterngerät koppeln: `http://<Server>:<ADMIN_PORT>/admin` im Heimnetz öffnen, Passwort eingeben, den Code samt Server-URL in der App unter „Gerät koppeln“ eintragen. Weitere Geräte koppelt ein Elterngerät über „Gerät koppeln“ (Rolle wählen, ggf. Namen des Kindes eingeben): Es zeigt einen QR-Code mit Server-URL und den Code zum Abtippen, 10 Minuten gültig. Das neue Gerät scannt den QR-Code (Google Code Scanner, braucht Google Play-Dienste) oder tippt Server-URL und Code ein.
 
 CI: `.github/workflows/ci.yml` läuft bei Push auf `main` und bei Pull Requests und führt `./gradlew build` aus.

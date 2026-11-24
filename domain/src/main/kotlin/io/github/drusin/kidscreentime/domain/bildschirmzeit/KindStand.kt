@@ -13,9 +13,17 @@ data class KindStand(
     val wochenvorlage: Wochenvorlage,
     val tagesanpassungen: List<Tagesanpassung> = emptyList(),
     val sitzungen: List<Sitzung> = emptyList(),
-    val vorwarnschwelle: Duration = Duration.ofMinutes(5),
-    val ueberziehungsgrenze: Duration = Duration.ofMinutes(60),
+    val vorwarnschwelle: Duration = STANDARD_VORWARNSCHWELLE,
+    val ueberziehungsgrenze: Duration = STANDARD_UEBERZIEHUNGSGRENZE,
 ) {
+    companion object {
+        /** Standard für ein neues Kind: Vorwarnung bei 5 min Restzeit. */
+        val STANDARD_VORWARNSCHWELLE: Duration = Duration.ofMinutes(5)
+
+        /** Standard für ein neues Kind: Automatischer Stopp nach 60 min Überziehung. */
+        val STANDARD_UEBERZIEHUNGSGRENZE: Duration = Duration.ofMinutes(60)
+    }
+
     /** Die abgeleiteten Werte für den Tag, in den [jetzt] fällt. */
     fun tagesstand(jetzt: Instant): Tagesstand {
         val tag = jetzt.atZone(zeitzone).toLocalDate()

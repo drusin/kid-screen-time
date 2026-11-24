@@ -20,6 +20,7 @@ class ServerServices(
     val config: ServerConfig,
     val wallClock: WallClock,
     val database: Database,
+    val children: ChildService,
     val pairing: PairingService,
     val devices: DeviceService,
     val rateLimiter: FailureRateLimiter,
@@ -27,11 +28,13 @@ class ServerServices(
     companion object {
         fun create(config: ServerConfig, wallClock: WallClock, monotonicClock: MonotonicClock): ServerServices {
             val database = Database.open(config.databasePath)
+            val children = ChildService(database, wallClock, config.familyZone)
             return ServerServices(
                 config = config,
                 wallClock = wallClock,
                 database = database,
-                pairing = PairingService(database, wallClock),
+                children = children,
+                pairing = PairingService(database, wallClock, children),
                 devices = DeviceService(database, wallClock),
                 rateLimiter = FailureRateLimiter(monotonicClock),
             )
