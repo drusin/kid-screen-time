@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.room.Room
 import io.github.drusin.kidscreentime.AppContainer
+import io.github.drusin.kidscreentime.alarm.AlarmEffects
 import io.github.drusin.kidscreentime.db.AppDatabase
 import io.github.drusin.kidscreentime.domain.clock.ManualClock
 import io.github.drusin.kidscreentime.pairing.FakeTokenStore
@@ -32,6 +33,8 @@ class TestContainer(
     val clock: ManualClock = ManualClock(),
     /** Replaces the MockEngine, e.g. by an engine that forwards to the real server (see `SyncScenario`). */
     engine: HttpClientEngine? = null,
+    /** Replaces sound and full screen of the alarm, e.g. by `RecordingAlarmEffects`. */
+    alarmEffects: AlarmEffects = AlarmEffects.NONE,
 ) {
     val requests = mutableListOf<HttpRequestData>()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
@@ -45,6 +48,7 @@ class TestContainer(
         wallClock = clock,
         monotonicClock = clock,
         database = database,
+        alarmEffects = alarmEffects,
     )
 }
 

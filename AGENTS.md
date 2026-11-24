@@ -64,6 +64,14 @@ Fachbegriffe immer wie in `GLOSSARY.md` verwenden. Spezifikation: `.scratch/scre
 - `restzeit` und `ueberziehung` sind nie negativ. Details und Entscheidungen: Ticket 02, „Notizen zur Umsetzung“.
 - Tests dafür nutzen `ManualClock` und gehen nur über `tagesstand`.
 
+## Alarmkern (Kindgerät)
+
+- Fällige Zeitpunkte rechnet nur `domain`: `KindStand.faelligeZeitpunkte(jetzt, verlauf)` liefert `FaelligeZeitpunkte` aus `Ausloeser` (heute `VORWARNUNG`, `ALARM`) mit Zeitpunkt. `Alarmverlauf` bringt das mit, was `domain` nicht weiß (Vorwarnung schon gegeben, letztes Klingeln). Ein neuer Auslöser (Ticket 07 Automatischer Stopp, 11 Mitternacht) = Eintrag in `Ausloeser` plus Regel dort; der Compiler zwingt zur Behandlung in `AlarmKern.trigger`.
+- `AlarmKern` (`app/.../alarm`) plant immer nur den frühesten Zeitpunkt mit einem `setAlarmClock` (`AlarmScheduler` ist die einzige Stelle mit `AlarmManager`). Beim Klingeln führt `trigger()` alles Fällige aus, merkt es in `AlarmMemory` (je Sitzung, SharedPreferences) und plant neu. Effekte (Ton, Vollbild) laufen über `AlarmEffects`; Tests nehmen `RecordingAlarmEffects` (`AlarmKernTest`) oder `AlarmEffects.NONE` (Standard in `TestContainer`/`SyncScenario`).
+- Der Hook „nach jedem Start, Stopp und Sync neu planen“ ist `AlarmKern.observe`, gestartet in `KidScreenTimeApp.onCreate`: es sammelt `ChildRepository.local` (Snapshot plus Outbox). Jeder Weg, der den lokalen Stand ändert (auch ein vom Push ausgelöster `ChildRepository.sync`), plant dadurch neu, ohne dass `sync` etwas wissen muss. Neue Wege, die den Stand ändern, müssen über Room/`local` laufen, dann gilt der Hook automatisch.
+- Alarm-Tests: `ShadowAlarmManager.peekNextScheduledAlarm()` gibt den geplanten Zeitpunkt zurück. Zeit kommt aus der `ManualClock`, die geplanten Zeiten sind also exakt prüfbar.
+- Debug-Build: `TestSession` (Interface in `main`) ersetzt den Stand durch eine lokale 2-min-Sitzung; `createTestSession`/`DebugTools` gibt es je einmal in `src/debug` und `src/release` (release: leer). Manuelle Prüfung: `docs/alarm-checkliste.md`.
+
 ## Release
 
 - Version und Signatur der App stehen in `app/build.gradle.kts` (Env `RELEASE_TAG`/`-PreleaseTag`, `RELEASE_KEYSTORE_*`). Keystore nie im Repo. Ohne Env baut alles unsigniert weiter; `./gradlew build` darf davon nie abhängen.

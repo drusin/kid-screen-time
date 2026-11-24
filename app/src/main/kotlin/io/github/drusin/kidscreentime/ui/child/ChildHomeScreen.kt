@@ -25,7 +25,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -49,6 +55,7 @@ import io.github.drusin.kidscreentime.ui.stateWord
 import io.github.drusin.kidscreentime.ui.theme.stateColor
 import io.github.drusin.kidscreentime.ui.toClockText
 import io.github.drusin.kidscreentime.ui.toMinutesRoundedUp
+import java.time.Duration
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -56,11 +63,21 @@ import java.util.Locale
 /** The Kindgerät screen, Variante A "Ring": greeting, ring with remaining time and state word, Tageskontingent, used time. No settings. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChildHomeScreen(viewModel: ChildHomeViewModel) {
+fun ChildHomeScreen(viewModel: ChildHomeViewModel, debugTools: @Composable () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     EverySecond(viewModel::tick)
+    // The Vorwarnung: the sound comes from the Alarmkern, the snackbar from here when the screen sees the state change.
+    val snackbarHost = remember { SnackbarHostState() }
+    val warningText = stringResource(R.string.warning_snackbar, minutesText((state.stand?.restzeit ?: Duration.ZERO).toMinutesRoundedUp()))
+    var previousState by remember { mutableStateOf<Zustand?>(null) }
+    LaunchedEffect(state.stand?.zustand) {
+        val now = state.stand?.zustand
+        if (now == Zustand.VORWARNUNG && previousState != null && previousState != Zustand.VORWARNUNG) snackbarHost.showSnackbar(warningText)
+        previousState = now
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
                 title = {
@@ -80,6 +97,7 @@ fun ChildHomeScreen(viewModel: ChildHomeViewModel) {
                     Ring(stand)
                     Allowance(stand)
                     ActionButton(state.action, stand.zustand, viewModel::onAction)
+                    debugTools()
                 }
                 state.loading -> CircularProgressIndicator()
                 else -> {

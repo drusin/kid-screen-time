@@ -2,6 +2,13 @@ package io.github.drusin.kidscreentime
 
 import android.content.Context
 import android.os.Build
+import io.github.drusin.kidscreentime.alarm.AlarmEffects
+import io.github.drusin.kidscreentime.alarm.AlarmKern
+import io.github.drusin.kidscreentime.alarm.AlarmScheduler
+import io.github.drusin.kidscreentime.alarm.AndroidAlarmEffects
+import io.github.drusin.kidscreentime.alarm.SharedPreferencesAlarmMemory
+import io.github.drusin.kidscreentime.alarm.TestSession
+import io.github.drusin.kidscreentime.alarm.createTestSession
 import io.github.drusin.kidscreentime.child.ChildRepository
 import io.github.drusin.kidscreentime.clock.AndroidMonotonicClock
 import io.github.drusin.kidscreentime.db.AppDatabase
@@ -20,7 +27,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 
 /**
- * Manual dependency injection (no Hilt): the one place that wires the app. Created once by [KidScreenTimeApp].
+ * Manual dependency injection (no Hilt): the one place that wires the app. Created once by [KidScreenTimeApp], which also starts [AlarmKern.observe].
  * Tests build their own with a fake [TokenStore], a `MockEngine`, a `ManualClock` and an in-memory [AppDatabase];
  * ViewModels take what they need from here.
  */
@@ -34,11 +41,24 @@ class AppContainer(
     val database: AppDatabase = AppDatabase.create(context),
     /** The scanner needs an Activity context, so screens build it with their own. */
     val qrScannerFactory: (Context) -> QrScanner = { GmsQrScanner(it) },
+    /** What the Alarmkern makes happen at the device (sound, full screen). Tests record instead. */
+    val alarmEffects: AlarmEffects = AndroidAlarmEffects(context),
+    /** The debug build's local test Sitzung; release has none. */
+    val testSession: TestSession = createTestSession(context, wallClock),
 ) {
     val httpClient = createHttpClient(engine)
     val pairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context))
     val parentRepository = ParentRepository(httpClient, pairingRepository)
     val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock)
+
+    val alarmKern = AlarmKern(
+        childRepository,
+        AlarmScheduler(context),
+        SharedPreferencesAlarmMemory(context),
+        alarmEffects,
+        wallClock,
+        testSession,
+    )
 
     /** Suggested name for this device during the Kopplung. */
     val defaultDeviceName: String = Build.MODEL.orEmpty()

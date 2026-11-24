@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.drusin.kidscreentime.AppContainer
+import io.github.drusin.kidscreentime.alarm.DebugTools
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceScreen
@@ -36,6 +37,7 @@ fun AppRoot(container: AppContainer) {
                 viewModel(factory = viewModelFactory {
                     initializer { ChildHomeViewModel(container.childRepository, container.wallClock) }
                 }),
+                debugTools = { DebugTools(container) },
             )
         }
     }

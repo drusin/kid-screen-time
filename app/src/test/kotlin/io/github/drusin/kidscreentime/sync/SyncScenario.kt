@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.sync
 
+import io.github.drusin.kidscreentime.alarm.AlarmEffects
 import io.github.drusin.kidscreentime.api.ChildSnapshot
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.child.ChildSyncResult
@@ -82,7 +83,7 @@ class SyncScenario(
     val child: Device get() = devices.last()
 
     /** Creates another device of the app on the same server and clock (not paired yet). */
-    fun device(): Device {
+    fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE): Device {
         val engine = MockEngine { request ->
             requests += "${request.method.value} ${request.url.encodedPath}"
             if (!online) throw IOException("kein Netz")
@@ -98,12 +99,12 @@ class SyncScenario(
             }
             respond(answer.readRawBytes(), answer.status, headersOf(HttpHeaders.ContentType, answer.headers[HttpHeaders.ContentType] ?: "application/json"))
         }
-        return Device(TestContainer(clock = server.clock, engine = engine)).also { devices += it }
+        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects)).also { devices += it }
     }
 
     /** Creates a device and pairs it as the Kindgerät of a new Kind "Mia" (or of [childId] when given). */
-    suspend fun pairChildDevice(childId: String? = null): Device {
-        val device = device()
+    suspend fun pairChildDevice(childId: String? = null, alarmEffects: AlarmEffects = AlarmEffects.NONE): Device {
+        val device = device(alarmEffects)
         val code = if (childId == null) server.services.pairing.createCode(DeviceRole.CHILD, newChildName = "Mia")
         else server.services.pairing.createCode(DeviceRole.CHILD, childId = childId)
         device.app.container.pairingRepository.pair(TestServer.PUBLIC, code.code, "Tablet")
