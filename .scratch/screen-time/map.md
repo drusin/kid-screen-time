@@ -44,12 +44,11 @@ Eine **umsetzungsreife Spezifikation plus Architekturentscheidung** für eine Fa
 - [Wie wird die APK gebaut, signiert und veröffentlicht?](issues/09-build-release-apk.md): GitHub Actions mit öffentlichem Repo, Release per Tag `vX.Y.Z` (versionCode aus dem Tag), JVM-Tests + Lint als Gate, Keystore im Passwortmanager + Offline-Backup + CI-Secret, Package `io.github.drusin.kidscreentime`, Google-Registrierung beim ersten Release
 - [Wie werden offline gepufferte Start- und Stopp-Ereignisse mit dem Server zusammengeführt?](issues/10-sync-offline-ereignisse.md): Sitzungs-Upsert mit Sitzungs-UUID vom Kindgerät über eine Outbox (online wie offline, Batch), Zeitpunkte als Alter über die monotone Uhr, ein Start wird nie abgelehnt, das frühere Ende gewinnt, Automatischer Stopp auch lokal geplant, keine nachgeholten Eltern-Benachrichtigungen
 - [Wie wird der Server im Homelab betrieben und gesichert?](issues/11-deployment-homelab.md): eigener Stack-Ordner in `~/docker` hinter Traefik (`kidscreentime.rusin.xyz`, `ntfy.rusin.xyz`), `/admin` auf eigenem Host-Port ohne Traefik-Route, ntfy von außen nur lesend, Config per Compose + `.env`, Image auf GHCR beim Release-Tag, Updates manuell (Server vor App)
+- [Was muss v1 für mehrere Kinder können?](issues/12-mehrere-kinder.md): Datenmodell und API mehrkindfähig, Eltern-UI in v1 für ein Kind, Regeln pro Kind und Zeitzone pro Familie, Kind wird beim ersten Kopplungscode fürs Kindgerät mit Namen angelegt, Name vorne in jeder Eltern-Benachrichtigung
 
 ## Not yet specified
 
-- **Mehrere Kinder**: Wie Kopplung und Eltern-UI aussehen, wenn es mehr als ein Kind gibt. Die gewählte Eltern-Oberfläche (ein Bildschirm) braucht dann eine Kind-Auswahl.
-- **Lebenszeichen des Kindgeräts**: Der Server merkt, wenn das Kindgerät sich nicht mehr meldet (deinstalliert, ausgeschaltet), und benachrichtigt die Eltern? Ob und wie, ist noch unscharf.
-- **Teststrategie**: Insbesondere, wie man das Alarmverhalten (Standby, Doze) verifiziert.
+<!-- leer: die letzten Fog-Bereiche sind zu Tickets geworden -->
 
 ## Out of scope
 

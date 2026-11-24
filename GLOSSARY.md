@@ -1,6 +1,6 @@
 # Glossar
 
-**Kind**: Die Person, deren Bildschirmzeit begrenzt wird. Aktuell gibt es eins, weitere sollen später möglich sein.
+**Kind**: Die Person, deren Bildschirmzeit begrenzt wird. Ein Kind hat einen Namen. Wochenvorlage, Tagesanpassungen, Vorwarnschwelle, Überziehungsgrenze, Verlauf und Kindgerät gehören jeweils zu einem Kind. Aktuell gibt es eins, weitere sollen später möglich sein. Ein Kind wird angelegt, wenn sein erstes Kindgerät gekoppelt wird.
 
 **Eltern**: Die Personen, die Kontingente festlegen und ändern.
 
@@ -25,7 +25,7 @@ _Avoid_: Tagesausnahme (ersetzt nichts, sondern verändert)
 
 **Kindgerät**: Das gekoppelte Gerät des Kindes (Tablet). Jedes Kind hat genau ein Kindgerät. Wird ein neues gekoppelt, wird das alte entkoppelt, und eine laufende Sitzung läuft am neuen Gerät weiter. Hier wird die Sitzung gestartet und gestoppt, die Restzeit angezeigt und der Alarm abgespielt.
 
-**Elterngerät**: Ein gekoppeltes Gerät der Eltern. Hier werden Kontingente bearbeitet und der Verlauf angesehen, und hier kommt die Benachrichtigung beim Alarm an.
+**Elterngerät**: Ein gekoppeltes Gerät der Eltern. Hier werden Kontingente bearbeitet und der Verlauf angesehen, und hier kommt die Benachrichtigung beim Alarm an. Ein Elterngerät gehört zu allen Kindern der Familie.
 
 **Vorwarnung**: Ein kurzer Ton am Kindgerät, einmal pro Sitzung, wenn die Restzeit eine einstellbare Schwelle erreicht oder schon darunter liegt (Standard: 5 Minuten).
 
