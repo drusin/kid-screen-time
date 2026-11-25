@@ -65,7 +65,7 @@ class ChildHomeViewModelTest {
         }
     }
 
-    private fun viewModel() = main.track(ChildHomeViewModel(app.container.childRepository, app.container.wallClock))
+    private fun viewModel() = main.track(ChildHomeViewModel(app.container.childRepository, app.container.wallClock, app.container.setupChecklist))
 
     @Test
     fun `Das Tablet ist nach der Kopplung ein Kindgerät`() {

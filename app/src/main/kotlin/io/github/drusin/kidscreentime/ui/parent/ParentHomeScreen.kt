@@ -37,6 +37,7 @@ import io.github.drusin.kidscreentime.R
 import io.github.drusin.kidscreentime.api.ChildState
 import io.github.drusin.kidscreentime.api.ChildStatus
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
+import io.github.drusin.kidscreentime.ui.labelRes
 import io.github.drusin.kidscreentime.ui.minutesText
 import io.github.drusin.kidscreentime.ui.signedMinutesText
 import io.github.drusin.kidscreentime.ui.stateWord
@@ -95,6 +96,15 @@ private fun StatusCard(child: ParentChildSnapshot, timeZone: String?, knownSince
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(child.name, style = MaterialTheme.typography.titleLarge)
+            // The missing Punkte of the Einrichtungs-Checkliste, red. A display, not an action: independent of offline.
+            if (child.missingSetupItems.isNotEmpty()) {
+                val labels = child.missingSetupItems.map { stringResource(it.labelRes()) }
+                Text(
+                    stringResource(R.string.parent_status_setup_missing, labels.joinToString(", ")),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             val status = child.status
             if (status == null) {
                 Text(stringResource(R.string.parent_home_unavailable), color = MaterialTheme.colorScheme.error)

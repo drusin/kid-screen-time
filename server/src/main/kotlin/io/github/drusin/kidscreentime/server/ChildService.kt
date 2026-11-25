@@ -8,6 +8,7 @@ import io.github.drusin.kidscreentime.api.DayAdjustment
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.api.RunningSession
 import io.github.drusin.kidscreentime.api.SessionUpdate
+import io.github.drusin.kidscreentime.api.SetupItem
 import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.api.SessionRecord
 import io.github.drusin.kidscreentime.api.WeeklyTemplateVersion
@@ -194,14 +195,18 @@ class ChildService(
      *   changes nothing, an earlier one replaces the end and the reason becomes "gestoppt".
      * - A new Sitzung starts no earlier than the end of the previous one (overlaps are cut) and is marked "offline
      *   erfasst" when the server learns of its start later than [OFFLINE_DELAY] after it.
+     *
+     * [missingSetupItems] is the Einrichtungs-Checkliste of the Kindgerät [deviceId] (null: not reported). It is stored
+     * as the last list of that device, in the same transaction ([reportSetup]).
      */
-    fun sync(childId: String, updates: List<SessionUpdate>): SyncResult {
+    fun sync(childId: String, updates: List<SessionUpdate>, deviceId: String? = null, missingSetupItems: List<SetupItem>? = null): SyncResult {
         val invalid = updates.firstOrNull { runCatching { UUID.fromString(it.id) }.isFailure }
         if (invalid != null) return SyncResult.Invalid("Ungültige Sitzungs-ID: ${invalid.id}")
         val now = wallClock.now()
         val result = try {
             database.transaction { c ->
                 var changed = false
+                val setup = if (deviceId != null && missingSetupItems != null) reportSetup(c, deviceId, missingSetupItems) else null
                 for (update in updates.sortedBy { -it.startAgeMillis }) {
                     when (upsert(c, childId, update, now)) {
                         Upsert.FOREIGN -> throw ForeignSessionException()
@@ -210,7 +215,7 @@ class ChildService(
                     }
                 }
                 val snapshot = checkNotNull(snapshot(c, childId, now)) { "Das Kind des Kindgeräts fehlt" }
-                SyncResult.Synced(snapshot, changed)
+                SyncResult.Synced(snapshot, changed, setup?.changed ?: false, setup?.transition)
             }
         } catch (_: ForeignSessionException) {
             // Thrown inside the transaction on purpose: everything of this batch is rolled back.
@@ -219,6 +224,31 @@ class ChildService(
         if (result is SyncResult.Synced) notifyStandChanged()
         return result
     }
+
+    /**
+     * Stores the Einrichtungs-Checkliste report of the Kindgerät [deviceId]: only the last list is kept. The Übergang
+     * "vollständig" to "etwas fehlt" is decided here, in the transaction of the sync, with the Vermerk
+     * `devices.setup_notified` per Kindgerät (not per Sitzung): [SetupReport.transition] is set exactly once per Übergang
+     * (a repeated batch, a second sync or a concurrent one sees the Vermerk), the Vermerk falls only with a complete report.
+     */
+    private fun reportSetup(c: Connection, deviceId: String, missing: List<SetupItem>): SetupReport {
+        val items = missing.distinct().sortedBy { it.ordinal }
+        val stored = items.joinToString(",") { it.name }
+        val (previous, notified) = c.prepareStatement("SELECT setup_missing, setup_notified FROM devices WHERE id = ?").use { st ->
+            st.setString(1, deviceId)
+            st.executeQuery().use { if (it.next()) it.getString(1) to (it.getInt(2) == 1) else return SetupReport(false, null) }
+        }
+        val transition = items.isNotEmpty() && !notified
+        c.prepareStatement("UPDATE devices SET setup_missing = ?, setup_notified = ? WHERE id = ?").use {
+            it.setString(1, stored)
+            it.setInt(2, if (items.isEmpty()) 0 else 1)
+            it.setString(3, deviceId)
+            it.executeUpdate()
+        }
+        return SetupReport(changed = previous != stored, transition = items.takeIf { transition })
+    }
+
+    private class SetupReport(val changed: Boolean, val transition: List<SetupItem>?)
 
     /**
      * Books a Tagesanpassung of [deltaMinutes] for today (append only). Afterwards the stand counts as changed
@@ -423,7 +453,7 @@ class ChildService(
             val ids = c.createStatement().use { st ->
                 st.executeQuery("SELECT id FROM children ORDER BY created_at, id").use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
             }
-            ids.mapNotNull { id -> load(c, id, now)?.let { id to it } }
+            ids.mapNotNull { id -> load(c, id, now)?.let { id to it.copy(missingSetup = missingSetupItems(c, id)) } }
         }.map { (id, loaded) ->
             val stand = loaded.stand
             ParentChildSnapshot(
@@ -435,6 +465,7 @@ class ChildService(
                 weeklyTemplate = stand.wochenvorlage.dtoFor(tag),
                 weeklyTemplateTomorrow = stand.wochenvorlage.dtoFor(tag.plusDays(1)),
                 lastAdjustmentMinutes = loaded.lastAdjustment,
+                missingSetupItems = loaded.missingSetup,
             )
         }
     }
@@ -450,7 +481,21 @@ class ChildService(
         const val RESTZEIT_NULL = "RESTZEIT_NULL"
     }
 
-    private class Loaded(val name: String, val stand: KindStand, val lastAdjustment: Int? = null)
+    private data class Loaded(
+        val name: String,
+        val stand: KindStand,
+        val lastAdjustment: Int? = null,
+        val missingSetup: List<SetupItem> = emptyList(),
+    )
+
+    /** The missing Checklisten-Punkte the active Kindgerät of [childId] reported last (empty: vollständig or none yet). */
+    private fun missingSetupItems(c: Connection, childId: String): List<SetupItem> =
+        c.prepareStatement("SELECT setup_missing FROM devices WHERE child_id = ? AND role = 'CHILD' AND unpaired_at IS NULL").use { st ->
+            st.setString(1, childId)
+            st.executeQuery().use { rs ->
+                if (rs.next()) rs.getString(1).split(',').mapNotNull { name -> SetupItem.entries.firstOrNull { it.name == name } } else emptyList()
+            }
+        }
 
     /** Loads the input of `domain` for the day of [now]: Wochenvorlage, today's Sitzungen and Tagesanpassungen, rules. */
     private fun load(c: Connection, childId: String, now: Instant): Loaded? {
@@ -558,8 +603,17 @@ private fun Wochenvorlage.dtoFor(tag: LocalDate): WeeklyTemplateVersion {
 }
 
 sealed interface SyncResult {
-    /** [changed]: the batch brought a new Start or Stopp (the Elterngeräte get a Resync-Signal). */
-    data class Synced(val snapshot: ChildSnapshot, val changed: Boolean = false) : SyncResult
+    /**
+     * [changed]: the batch brought a new Start or Stopp (the Elterngeräte get a Resync-Signal). [setupChanged]: the
+     * reported Checkliste differs from the stored one (Resync-Signal as well). [setupTransition]: the missing items when
+     * the Checkliste just went from "vollständig" to "etwas fehlt", otherwise null: the one Eltern-Benachrichtigung.
+     */
+    data class Synced(
+        val snapshot: ChildSnapshot,
+        val changed: Boolean = false,
+        val setupChanged: Boolean = false,
+        val setupTransition: List<SetupItem>? = null,
+    ) : SyncResult
 
     data class Invalid(val reason: String) : SyncResult
 

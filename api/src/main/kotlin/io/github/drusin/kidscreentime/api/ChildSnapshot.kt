@@ -78,4 +78,12 @@ data class SessionUpdate(val id: String, val startAgeMillis: Long, val endAgeMil
 
 /** Body of the sync (`POST` [ApiPaths.CHILD_SYNC]): the open Sitzungen of the Outbox, in start order. May be empty. */
 @Serializable
-data class ChildSyncRequest(val sessions: List<SessionUpdate> = emptyList())
+data class ChildSyncRequest(
+    val sessions: List<SessionUpdate> = emptyList(),
+    /**
+     * The prüfbaren Punkte of the Einrichtungs-Checkliste that are missing at the Kindgerät right now. Empty means
+     * "vollständig"; null means "not reported" (the server keeps what it has). The list describes the latest state, not
+     * an event: a repeated batch or a sync that was delayed offline carries the state at the time of sending.
+     */
+    val missingSetupItems: List<SetupItem>? = null,
+)

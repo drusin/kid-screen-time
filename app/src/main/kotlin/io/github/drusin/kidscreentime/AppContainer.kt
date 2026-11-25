@@ -28,6 +28,9 @@ import io.github.drusin.kidscreentime.push.PushRepository
 import io.github.drusin.kidscreentime.push.PushStorage
 import io.github.drusin.kidscreentime.qr.GmsQrScanner
 import io.github.drusin.kidscreentime.qr.QrScanner
+import io.github.drusin.kidscreentime.setup.AndroidSetupChecks
+import io.github.drusin.kidscreentime.setup.SetupChecklist
+import io.github.drusin.kidscreentime.setup.SetupChecks
 import io.github.drusin.kidscreentime.sync.SyncRetry
 import io.github.drusin.kidscreentime.sync.WorkManagerSyncRetry
 import io.ktor.client.engine.HttpClientEngine
@@ -62,6 +65,8 @@ class AppContainer(
     unregisterPush: () -> Unit = { UnifiedPush.unregister(context) },
     /** Shows the Eltern-Benachrichtigungen (ticket 14). Tests record instead. */
     parentNotifier: ParentNotifier = AndroidParentNotifier(context),
+    /** The system checks of the Einrichtungs-Checkliste (ticket 15). Tests steer them. */
+    setupChecks: SetupChecks = AndroidSetupChecks(context),
 ) {
     val httpClient = createHttpClient(engine)
     val pairingRepository: PairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context), onUnpaired = {
@@ -70,7 +75,8 @@ class AppContainer(
         pushRepository.onUnregistered()
     })
     val parentRepository = ParentRepository(httpClient, pairingRepository, database.parentSnapshotDao(), wallClock)
-    val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry)
+    val setupChecklist = SetupChecklist(setupChecks, context)
+    val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry, setupChecklist)
     val pushRepository: PushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
     val pushHandler = PushHandler(pairingRepository, childRepository, parentNotifier)
 

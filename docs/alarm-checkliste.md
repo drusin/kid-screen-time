@@ -8,7 +8,7 @@ Es gibt keine instrumentierten Tests und keine Emulator-Läufe. Was nur am Gerä
 
 - Debug-Build auf das Tablet installieren (Paket `...kidscreentime.debug`, Name „Bildschirmzeit Dev“). Er hat unten auf dem Kind-Bildschirm den kleinen Knopf **„Testsitzung mit 2 min Kontingent“**: ein lokaler Timer mit 2 min Kontingent und 1 min Vorwarnschwelle, ohne Server. So dauert ein Durchgang Minuten statt Stunden.
 - Das Tablet ist als Kindgerät gekoppelt (der Kind-Bildschirm ist sichtbar). Der Knopf erscheint, sobald der erste Stand geladen ist.
-- Einstellungen am Tablet (später prüft die Einrichtungs-Checkliste das, Ticket 15): Alarme & Erinnerungen erlaubt, „Auf Vollbild-Benachrichtigungen“ erlaubt, Benachrichtigungen erlaubt, Akku „Nicht eingeschränkt“, Alarmlautstärke deutlich über 0. Samsung **Auto Blocker aus**.
+- Einstellungen am Tablet (die Einrichtungs-Checkliste der App prüft das, Punkt 13): Alarme & Erinnerungen erlaubt, „Auf Vollbild-Benachrichtigungen“ erlaubt, Benachrichtigungen erlaubt, Akku „Nicht eingeschränkt“, Alarmlautstärke deutlich über 0. Samsung **Auto Blocker aus**.
 - Jeder Punkt: Ergebnis (ok / Abweichung) und Datum unten notieren.
 
 ## Punkte
@@ -25,6 +25,7 @@ Es gibt keine instrumentierten Tests und keine Emulator-Läufe. Was nur am Gerä
 10. **Automatischer Stopp** (Ticket 07): Sitzung bis zur Überziehungsgrenze laufen lassen (Debug: Testsitzung, 2 min Kontingent plus Überziehungsgrenze). Die Sitzung endet am Tablet ohne Zutun, der Alarm hört auf, das Vollbild schließt. Auch mit ausgeschaltetem WLAN prüfen; danach WLAN an: am Server steht „Automatisch gestoppt“ mit dem Ende zur Grenze.
 11. **Nächster Wecker.** In der Uhr-App zeigt das Tablet während einer Sitzung den nächsten geplanten Zeitpunkt als „nächster Wecker“ (so sieht man, dass `setAlarmClock` geplant ist).
 12. **Offline und Neustart** (Ticket 08): WLAN aus, am Kind-Bildschirm Start (die Anzeige „Server nicht erreichbar · gerechnet mit dem Stand von …“ erscheint), Tablet neu starten, WLAN an, ohne die App zu öffnen. Der WorkManager-Job liefert die Sitzung: am Server steht der Start zum richtigen Zeitpunkt, markiert als „offline erfasst“. Dasselbe mit Entsperren statt Job: WLAN an, Bildschirm sperren und entsperren, der Sync läuft.
+13. **Einrichtungs-Checkliste** (Ticket 15): Symbol ☑ in der App-Leiste öffnet sie. Für jeden prüfbaren Punkt (Exakte Alarme, Vollbild-Benachrichtigung, Benachrichtigungen, Akku, Alarmlautstärke, Push-Verteiler) den Zustand im System ändern (Alarmlautstärke auf 0, Benachrichtigungen aus, Akku „Optimiert“, ntfy abwählen): Beim Zurückkehren in die App wird der Punkt rot, das rote Banner erscheint auf dem Hauptbildschirm, und das Elterngerät bekommt genau eine Benachrichtigung („Mia: Alarmlautstärke ist 0“) und zeigt den Punkt rot in der Status-Karte. „Einstellung öffnen“ landet in der richtigen Systemseite (bei Samsung/One UI besonders Vollbild-Benachrichtigung und Akku prüfen; Akku öffnet die App-Info, dort „Akku“ → „Nicht eingeschränkt“). Nach dem Beheben und Zurückkehren verschwinden Banner und rote Anzeige, eine erneute Störung benachrichtigt wieder. „Verteiler wählen“ zeigt die Verteiler-Auswahl.
 
 ## Durchgänge
 

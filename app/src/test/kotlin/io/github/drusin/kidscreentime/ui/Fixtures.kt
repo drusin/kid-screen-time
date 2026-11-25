@@ -50,6 +50,9 @@ class TestContainer(
     /** The Eltern-Benachrichtigungen the app showed (title to text), ticket 14. */
     val shownNotifications: MutableList<Pair<String, String>> = java.util.concurrent.CopyOnWriteArrayList()
 
+    /** What the system checks of the Einrichtungs-Checkliste find at this device (ticket 15). Set `missing`, then sync. */
+    val setupChecks = FakeSetupChecks()
+
     /** Written by the engine thread, read by the test thread. */
     val requests: MutableList<HttpRequestData> = java.util.concurrent.CopyOnWriteArrayList()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
@@ -67,7 +70,13 @@ class TestContainer(
         syncRetry = syncRetry ?: SyncRetry { retriesScheduled++ },
         unregisterPush = { pushUnregistrations++ },
         parentNotifier = { title, text -> shownNotifications += title to text },
+        setupChecks = setupChecks,
     )
+}
+
+/** The system checks of a simulated device: nothing is missing until the test says so. */
+class FakeSetupChecks(@Volatile var missing: List<io.github.drusin.kidscreentime.api.SetupItem> = emptyList()) : io.github.drusin.kidscreentime.setup.SetupChecks {
+    override fun missing() = missing
 }
 
 fun MockRequestHandleScope.respondJson(body: String, status: HttpStatusCode = HttpStatusCode.OK) =

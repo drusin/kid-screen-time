@@ -30,6 +30,8 @@ data class ParentChildSnapshot(
     val weeklyTemplateTomorrow: WeeklyTemplateVersion? = null,
     /** The Tagesanpassung "Letzte zurücknehmen" would take back (its delta in minutes), null when there is none today. */
     val lastAdjustmentMinutes: Int? = null,
+    /** The prüfbaren Punkte of the Einrichtungs-Checkliste the Kindgerät reported as missing last (empty: vollständig). */
+    val missingSetupItems: List<SetupItem> = emptyList(),
 )
 
 /** A Tagesanpassung for today: [deltaMinutes] is the Zu- (+) or Abschlag (−) in minutes, never 0. */

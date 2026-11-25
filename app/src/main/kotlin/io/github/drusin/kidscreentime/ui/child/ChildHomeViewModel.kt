@@ -2,6 +2,7 @@ package io.github.drusin.kidscreentime.ui.child
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.drusin.kidscreentime.api.SetupItem
 import io.github.drusin.kidscreentime.child.ChildLocalState
 import io.github.drusin.kidscreentime.child.ChildRepository
 import io.github.drusin.kidscreentime.child.ChildSyncResult
@@ -9,6 +10,7 @@ import io.github.drusin.kidscreentime.child.toKindStand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tagesstand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Zustand
 import io.github.drusin.kidscreentime.domain.clock.WallClock
+import io.github.drusin.kidscreentime.setup.SetupChecklist
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -46,6 +48,8 @@ data class ChildHomeUiState(
     /** The last sync failed: the values come from the stored snapshot and the Outbox. */
     val offline: Boolean = false,
     val action: ChildAction = ChildAction.UNAVAILABLE,
+    /** The prüfbaren Punkte of the Einrichtungs-Checkliste that are missing (as of the last check): the red banner shows when not empty. */
+    val setupMissing: List<SetupItem> = emptyList(),
 )
 
 /**
@@ -57,6 +61,7 @@ data class ChildHomeUiState(
 class ChildHomeViewModel(
     private val repository: ChildRepository,
     private val wallClock: WallClock,
+    private val setupChecklist: SetupChecklist,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChildHomeUiState())
     val state: StateFlow<ChildHomeUiState> = _state.asStateFlow()
@@ -73,7 +78,21 @@ class ChildHomeViewModel(
                 recalculate()
             }
         }
+        viewModelScope.launch {
+            setupChecklist.state.collect { checklist -> _state.update { it.copy(setupMissing = checklist.missing) } }
+        }
+        // The first sync of the screen (every sync checks the setup, so this is the check "at app start").
         sync()
+    }
+
+    private var resumedBefore = false
+
+    /**
+     * The screen came back to the foreground (also from the system settings the Checkliste links to): sync, which checks the setup
+     * again, so a fixed Punkt goes away and the server learns of it. The first call is the start of the screen and already synced.
+     */
+    fun onResume() {
+        if (resumedBefore) sync() else resumedBefore = true
     }
 
     fun sync() {

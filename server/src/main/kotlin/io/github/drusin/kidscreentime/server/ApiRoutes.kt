@@ -246,11 +246,14 @@ fun Route.apiRoutes(services: ServerServices) {
             return@authenticatedPost
         }
         val request = call.receive<ChildSyncRequest>()
-        when (val result = services.children.sync(childId, request.sessions)) {
+        when (val result = services.children.sync(childId, request.sessions, device.id, request.missingSetupItems)) {
             is SyncResult.Synced -> {
                 call.respond(result.snapshot)
-                // After the answer: publishing never delays the Kindgerät. Elterngeräte learn about a new Start or Stopp.
-                if (result.changed) services.push.signalParents()
+                // After the answer: publishing never delays the Kindgerät. Elterngeräte learn about a new Start or Stopp or a
+                // changed Checkliste. The one Benachrichtigung per Übergang carries a text (which also makes them reload).
+                val transition = result.setupTransition
+                if (transition != null) services.push.signalParents(ParentNotifications.setupMissing(result.snapshot.childName, transition))
+                else if (result.changed || result.setupChanged) services.push.signalParents()
             }
             is SyncResult.Invalid -> call.respond(HttpStatusCode.BadRequest, ErrorResponse(result.reason))
             SyncResult.ForeignSession -> call.respond(HttpStatusCode.Forbidden, ErrorResponse("Die Sitzung gehört zu einem anderen Kind"))

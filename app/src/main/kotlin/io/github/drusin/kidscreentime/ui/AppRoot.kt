@@ -8,14 +8,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.drusin.kidscreentime.AppContainer
-import io.github.drusin.kidscreentime.alarm.DebugTools
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceScreen
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceViewModel
 import io.github.drusin.kidscreentime.ui.pairing.RevokedScreen
-import io.github.drusin.kidscreentime.ui.child.ChildHomeScreen
-import io.github.drusin.kidscreentime.ui.child.ChildHomeViewModel
+import io.github.drusin.kidscreentime.ui.child.ChildRoot
 import io.github.drusin.kidscreentime.ui.parent.ParentRoot
 
 /**
@@ -35,12 +33,7 @@ fun AppRoot(container: AppContainer) {
         DeviceState.Revoked -> RevokedScreen(onAcknowledge = container.pairingRepository::acknowledgeRevoked)
         is DeviceState.Paired -> when (state.device.role) {
             DeviceRole.PARENT -> ParentRoot(container)
-            DeviceRole.CHILD -> ChildHomeScreen(
-                viewModel(factory = viewModelFactory {
-                    initializer { ChildHomeViewModel(container.childRepository, container.wallClock) }
-                }),
-                debugTools = { DebugTools(container) },
-            )
+            DeviceRole.CHILD -> ChildRoot(container)
         }
     }
 }

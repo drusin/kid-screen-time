@@ -12,6 +12,7 @@ import io.github.drusin.kidscreentime.domain.clock.MonotonicClock
 import io.github.drusin.kidscreentime.domain.clock.WallClock
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.pairing.PairingRepository
+import io.github.drusin.kidscreentime.setup.SetupChecklist
 import io.github.drusin.kidscreentime.sync.SyncRetry
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -67,6 +68,8 @@ class ChildRepository(
     private val monotonicClock: MonotonicClock,
     /** Repeats a failed sync when the network is back (WorkManager). */
     private val syncRetry: SyncRetry = SyncRetry {},
+    /** The Einrichtungs-Checkliste: checked again at the start of every sync, its missing list goes along. */
+    private val setupChecklist: SetupChecklist,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val snapshotDao = database.childSnapshotDao()
@@ -145,14 +148,16 @@ class ChildRepository(
     /**
      * Sends the Outbox (all open Sitzungen in start order, times as age by the monotonic clock) and stores the
      * snapshot of the answer. Afterwards the delivered rows are removed in the same transaction, unless a row changed
-     * during the call. Only one sync runs at a time.
+     * during the call. Only one sync runs at a time. It also checks the Einrichtungs-Checkliste and sends the missing
+     * prüfbaren Punkte (the server keeps only the latest list).
      */
     suspend fun sync(): ChildSyncResult = syncLock.withLock {
         val device = (pairing.state.value as? DeviceState.Paired)?.device ?: return ChildSyncResult.Unauthorized
         val token = pairing.token() ?: return ChildSyncResult.Unauthorized
         val sent = outboxDao.all()
         val clocks = SyncClocks(monotonicClock.elapsed().toMillis(), wallClock.now().toEpochMilli())
-        val request = ChildSyncRequest(sent.map { it.toUpdate(clocks) })
+        // The list describes the state at the time of sending, not an event: a retried or repeated batch carries the current check.
+        val request = ChildSyncRequest(sent.map { it.toUpdate(clocks) }, setupChecklist.refresh())
         try {
             val response = httpClient.post(device.serverUrl + ApiPaths.CHILD_SYNC) {
                 bearerAuth(token)

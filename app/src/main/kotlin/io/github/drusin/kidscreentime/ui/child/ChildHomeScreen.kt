@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,10 +45,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.drusin.kidscreentime.R
+import io.github.drusin.kidscreentime.api.SetupItem
+import io.github.drusin.kidscreentime.ui.labelRes
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tagesstand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Zustand
 import io.github.drusin.kidscreentime.ui.EverySecond
@@ -63,7 +70,7 @@ import java.util.Locale
 /** The Kindgerät screen, Variante A "Ring": greeting, ring with remaining time and state word, Tageskontingent, used time. No settings. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChildHomeScreen(viewModel: ChildHomeViewModel, debugTools: @Composable () -> Unit = {}) {
+fun ChildHomeScreen(viewModel: ChildHomeViewModel, onOpenChecklist: () -> Unit, debugTools: @Composable () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     EverySecond(viewModel::tick)
     // The Vorwarnung: the sound comes from the Alarmkern, the snackbar from here when the screen sees the state change.
@@ -83,6 +90,12 @@ fun ChildHomeScreen(viewModel: ChildHomeViewModel, debugTools: @Composable () ->
                 title = {
                     Text(state.childName?.let { stringResource(R.string.child_greeting, it) } ?: stringResource(R.string.app_name))
                 },
+                actions = {
+                    val label = stringResource(R.string.setup_title)
+                    TextButton(onClick = onOpenChecklist, modifier = Modifier.semantics { contentDescription = label }) {
+                        Text("☑", style = MaterialTheme.typography.titleLarge, color = if (state.setupMissing.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                    }
+                },
             )
         },
     ) { padding ->
@@ -91,6 +104,7 @@ fun ChildHomeScreen(viewModel: ChildHomeViewModel, debugTools: @Composable () ->
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
         ) {
+            if (state.setupMissing.isNotEmpty()) SetupBanner(state.setupMissing, onOpenChecklist)
             val stand = state.stand
             when {
                 stand != null -> {
@@ -113,6 +127,25 @@ fun ChildHomeScreen(viewModel: ChildHomeViewModel, debugTools: @Composable () ->
                     textAlign = TextAlign.Center,
                 )
             }
+        }
+    }
+}
+
+/** The red banner while a prüfbarer Punkt of the Einrichtungs-Checkliste is missing; a tap opens the Checkliste. */
+@Composable
+private fun SetupBanner(missing: List<SetupItem>, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val labels = missing.map { stringResource(it.labelRes()) }
+            Text(
+                stringResource(R.string.setup_banner, labels.joinToString(", ")),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(stringResource(R.string.setup_banner_action), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
