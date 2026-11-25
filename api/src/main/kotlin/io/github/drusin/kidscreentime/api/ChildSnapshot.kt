@@ -74,7 +74,17 @@ data class ChildSnapshot(
  * server calculates "server time at receipt − age". A stop always brings its start with it ([endAgeMillis] set).
  */
 @Serializable
-data class SessionUpdate(val id: String, val startAgeMillis: Long, val endAgeMillis: Long? = null)
+data class SessionUpdate(
+    val id: String,
+    val startAgeMillis: Long,
+    val endAgeMillis: Long? = null,
+    /**
+     * Why the Sitzung ended, optional (an older app sends none, which means [SessionEndReason.STOPPED]). The Kindgerät
+     * sends [SessionEndReason.AUTOMATIC_STOP] when its own Alarmkern ended the Sitzung at the Überziehungsgrenze, so the
+     * Verlauf marks it "Automatisch gestoppt" even if this sync arrives before the server's own Automatischer Stopp.
+     */
+    val endReason: SessionEndReason? = null,
+)
 
 /** Body of the sync (`POST` [ApiPaths.CHILD_SYNC]): the open Sitzungen of the Outbox, in start order. May be empty. */
 @Serializable

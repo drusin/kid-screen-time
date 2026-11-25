@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.Flow
  * A new entity means: add it to `entities`, raise `version`, add a `Migration` to [MIGRATIONS] (the schema JSON of
  * every version is committed in `app/schemas`; `AppDatabaseMigrationTest` checks every step).
  */
-@Database(entities = [ChildSnapshotEntity::class, OutboxSessionEntity::class, ParentSnapshotEntity::class], version = 3, exportSchema = true)
+@Database(entities = [ChildSnapshotEntity::class, OutboxSessionEntity::class, ParentSnapshotEntity::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun childSnapshotDao(): ChildSnapshotDao
 
@@ -51,7 +51,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        /** Version 4 (ticket 16): the Outbox row remembers why a Sitzung ended (Automatischer Stopp of the Alarmkern). */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `outbox_session` ADD COLUMN `endReason` TEXT")
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, FILE_NAME).addMigrations(*MIGRATIONS).build()
@@ -100,6 +107,8 @@ data class OutboxSessionEntity(
     val endMonotonicMillis: Long? = null,
     val endWallMillis: Long? = null,
     val revision: Int = 0,
+    /** Name of the `SessionEndReason` sent with the end; null means the Kind stopped. */
+    val endReason: String? = null,
 )
 
 @Dao

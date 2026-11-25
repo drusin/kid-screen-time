@@ -1,5 +1,6 @@
 package io.github.drusin.kidscreentime.alarm
 
+import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.child.ChildLocalState
 import io.github.drusin.kidscreentime.child.ChildRepository
 import io.github.drusin.kidscreentime.child.toKindStand
@@ -92,7 +93,7 @@ class AlarmKern(
                 Ausloeser.AUTOMATISCHER_STOPP -> {
                     // The end is the time the limit was reached, like at the server (the earlier end wins, so no conflict).
                     val zeitpunkt = faellig.first { it.ausloeser == Ausloeser.AUTOMATISCHER_STOPP }.zeitpunkt
-                    if (testSession.active) testSession.stop() else repository.stopSession(sessionId, zeitpunkt)
+                    if (testSession.active) testSession.stop() else repository.stopSession(sessionId, zeitpunkt, SessionEndReason.AUTOMATIC_STOP)
                 }
             }
         }

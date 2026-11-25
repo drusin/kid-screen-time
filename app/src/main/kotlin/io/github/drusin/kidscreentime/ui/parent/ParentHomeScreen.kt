@@ -52,7 +52,7 @@ import io.github.drusin.kidscreentime.ui.toMinutesRoundedUp
 /** Eltern-Startseite: the Status-Karte of the Kind (or the hint that none is paired yet) and the way to pair a device. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ParentHomeScreen(viewModel: ParentHomeViewModel, onOpenWeeklyTemplate: () -> Unit, onOpenSettings: () -> Unit) {
+fun ParentHomeScreen(viewModel: ParentHomeViewModel, onOpenWeeklyTemplate: () -> Unit, onOpenSettings: () -> Unit, onOpenHistory: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -83,6 +83,7 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onOpenWeeklyTemplate: () ->
             } else {
                 state.children.forEach { StatusCard(it, state.timeZone, state.knownSinceEpochMillis) }
                 if (state.child?.status != null) AdjustTodayCard(state, viewModel)
+                state.child?.let { RecentDaysCard(it.recentDays, state.canAct, state.offline, onOpenHistory) }
                 state.child?.let { WeeklyTemplateRow(it, onOpenWeeklyTemplate) }
             }
         }

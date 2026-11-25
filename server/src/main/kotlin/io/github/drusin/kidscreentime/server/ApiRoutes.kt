@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.api.ErrorResponse
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.HistoryResponse
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.api.RulesRequest
 import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
@@ -96,6 +97,17 @@ fun Route.apiRoutes(services: ServerServices) {
 
     authenticatedGet(ApiPaths.PARENT_SNAPSHOT, services, DeviceRole.PARENT) {
         call.respond(parentSnapshot(services))
+    }
+
+    // Der vollständige Verlauf eines Kindes (lesende Eltern-Aktion, nur online).
+    authenticatedGet(ApiPaths.PARENT_HISTORY, services, DeviceRole.PARENT) {
+        val childId = call.request.queryParameters["childId"]
+        val days = childId?.let(services.children::history)
+        if (childId == null || days == null) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
+        } else {
+            call.respond(HistoryResponse(childId, services.config.familyZone.id, days))
+        }
     }
 
     // Eltern-Aktion (Pattern: Aktion, Stand ändern, notifyStandChanged, Resync-Signal ans Kind, neuer Eltern-Snapshot als Antwort).

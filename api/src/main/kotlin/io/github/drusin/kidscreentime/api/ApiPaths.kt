@@ -40,6 +40,13 @@ object ApiPaths {
      */
     const val PARENT_UNPAIR_DEVICE = "/api/v1/parent/devices/unpair"
 
+    /**
+     * Elterngerät: the complete Verlauf of a Kind (GET, query parameter `childId`), answer [HistoryResponse] with the last
+     * 90 days including today. A read-only Eltern-Aktion: it needs the server (offline the app shows a hint). `400` for an
+     * unknown or missing Kind.
+     */
+    const val PARENT_HISTORY = "/api/v1/parent/history"
+
     /** Kindgerät: sync (POST). Sends the Outbox ([ChildSyncRequest]) and returns the complete [ChildSnapshot]. */
     const val CHILD_SYNC = "/api/v1/child/sync"
 

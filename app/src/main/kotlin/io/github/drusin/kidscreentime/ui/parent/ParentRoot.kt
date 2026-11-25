@@ -8,13 +8,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.drusin.kidscreentime.AppContainer
 
 /**
- * The screens of a Elterngerät: the Startseite and, on top of it, "Gerät koppeln", "Einstellungen & Geräte" and the "Wochenvorlage" dialog. There is no NavHost: a flag
+ * The screens of a Elterngerät: the Startseite and, on top of it, "Gerät koppeln", "Einstellungen & Geräte", the "Wochenvorlage" dialog and the "Verlauf". There is no NavHost: a flag
  * opens the pairing screen, and every opening gets a fresh ViewModel through the counter in its key.
  */
 @Composable
@@ -22,11 +23,13 @@ fun ParentRoot(container: AppContainer) {
     val home = viewModel<ParentHomeViewModel>(factory = viewModelFactory {
         initializer { ParentHomeViewModel(container.parentRepository, container.pushHandler.signals) }
     })
+    val homeState by home.state.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { home.refreshIfOffline() }
     var pairingOpenings by rememberSaveable { mutableIntStateOf(0) }
     var pairingOpen by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var templateOpen by rememberSaveable { mutableStateOf(false) }
+    var historyOpen by rememberSaveable { mutableStateOf(false) }
     if (pairingOpen) {
         PairNewDeviceScreen(
             viewModel = viewModel<PairNewDeviceViewModel>(key = "pair-new-device-$pairingOpenings", factory = viewModelFactory {
@@ -42,9 +45,18 @@ fun ParentRoot(container: AppContainer) {
             pairingOpenings++
             pairingOpen = true
         })
+    } else if (historyOpen && homeState.child != null) {
+        val childId = homeState.child!!.childId
+        HistoryScreen(
+            viewModel = viewModel<HistoryViewModel>(key = "history-$childId", factory = viewModelFactory {
+                initializer { HistoryViewModel(container.parentRepository, childId) }
+            }),
+            timeZone = homeState.timeZone,
+            onClose = { historyOpen = false },
+        )
     } else if (templateOpen) {
         WeeklyTemplateScreen(home, onClose = { templateOpen = false })
     } else {
-        ParentHomeScreen(home, onOpenWeeklyTemplate = { templateOpen = true }, onOpenSettings = { settingsOpen = true })
+        ParentHomeScreen(home, onOpenWeeklyTemplate = { templateOpen = true }, onOpenSettings = { settingsOpen = true }, onOpenHistory = { historyOpen = true })
     }
 }

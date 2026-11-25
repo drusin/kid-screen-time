@@ -90,6 +90,27 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun `Die Migration auf Version 4 behält die Outbox und lässt den Endegrund leer`() {
+        createOldDatabase(3) {
+            it.execSQL("INSERT INTO outbox_session (sessionId, startMonotonicMillis, startWallMillis, endMonotonicMillis, endWallMillis, revision) VALUES ('s1', 1, 2, 3, 4, 5)")
+        }
+
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, DB).addMigrations(*AppDatabase.MIGRATIONS).build()
+        try {
+            runBlocking {
+                val row = db.outboxDao().find("s1")!!
+                assertEquals(4L, row.endWallMillis)
+                assertEquals(5, row.revision)
+                assertEquals(null, row.endReason)
+                db.outboxDao().upsert(row.copy(endReason = "AUTOMATIC_STOP"))
+                assertEquals("AUTOMATIC_STOP", db.outboxDao().find("s1")?.endReason)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }
