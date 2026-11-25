@@ -11,6 +11,7 @@ import io.github.drusin.kidscreentime.api.SessionUpdate
 import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.api.SessionRecord
 import io.github.drusin.kidscreentime.api.WeeklyTemplateVersion
+import io.github.drusin.kidscreentime.domain.bildschirmzeit.Ausloeser
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Endegrund
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.KindStand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Sitzung
@@ -86,6 +87,14 @@ class ChildService(
     /** When the running Sitzung of [childId] reaches the Überziehungsgrenze (may lie in the past), null if none runs. */
     fun nextAutomaticStop(childId: String, now: Instant): Instant? = database.transaction { c ->
         load(c, childId, now)?.stand?.faelligeZeitpunkte(now)?.automatischerStopp
+    }
+
+    /**
+     * The next midnight (Familien-Zeitzone) at which the stand of [childId] has to be judged again: only while a Sitzung
+     * runs past it (`Ausloeser.MITTERNACHT` from `domain`), otherwise null.
+     */
+    fun nextMidnight(childId: String, now: Instant): Instant? = database.transaction { c ->
+        load(c, childId, now)?.stand?.faelligeZeitpunkte(now)?.liste?.firstOrNull { it.ausloeser == Ausloeser.MITTERNACHT }?.zeitpunkt
     }
 
     /**

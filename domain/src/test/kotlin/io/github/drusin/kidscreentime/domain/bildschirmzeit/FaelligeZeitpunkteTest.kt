@@ -155,7 +155,8 @@ class FaelligeZeitpunkteTest {
         clock.advance(Duration.ofMinutes(14 * 60 + 50))
         val zeitpunkte = stand(kontingentMinuten = 120, sitzungen = listOf(Sitzung("s1", clock.now() - minuten(60)))).zeitpunkte()
 
-        assertTrue(zeitpunkte.liste.isEmpty())
+        assertEquals(listOf(Ausloeser.MITTERNACHT), zeitpunkte.liste.map { it.ausloeser }, "nur Mitternacht: dann wird neu gerechnet")
+        assertEquals(clock.now() + minuten(10), zeitpunkte.naechster?.zeitpunkt)
     }
 
     @Test
