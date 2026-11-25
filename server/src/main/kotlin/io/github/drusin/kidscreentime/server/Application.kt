@@ -44,8 +44,8 @@ class ServerServices(
             val database = Database.open(config.databasePath)
             val children = ChildService(database, wallClock, config.familyZone)
             val automaticStops = AutomaticStopEvents(children)
-            // More sources (midnight, ticket 11; notification "Restzeit 0", ticket 14) are added to this list.
-            val scheduler = EventScheduler(wallClock, children, listOf(automaticStops))
+            // More sources (notification "Restzeit 0", ticket 14) are added to this list.
+            val scheduler = EventScheduler(wallClock, children, listOf(automaticStops, MidnightEvents(children)))
             children.onStandChanged(scheduler::wake)
             val push = PushService(database, config, publisher)
             // Resync-Signale nach einem Automatischen Stopp: das Kindgerät holt sein Ende, die Elterngeräte den neuen Stand.

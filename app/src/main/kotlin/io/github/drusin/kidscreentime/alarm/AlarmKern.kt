@@ -25,7 +25,8 @@ import kotlinx.coroutines.sync.withLock
  *   and plans the next time.
  *
  * Automatischer Stopp (ticket 07): the Sitzung is stopped through the Outbox at the time `domain` names, and synced.
- * Later tickets add due times in `domain` (Mitternacht) and handle the new [Ausloeser] in [trigger]; planning needs no change.
+ * Mitternacht (ticket 11) is an [Ausloeser] that only plans again. Later tickets add due times in `domain` and handle the
+ * new [Ausloeser] in [trigger]; planning needs no change.
  */
 class AlarmKern(
     private val repository: ChildRepository,
@@ -85,6 +86,9 @@ class AlarmKern(
                     verlauf = verlauf.copy(vorwarnungGegeben = true, letzterAlarm = now)
                     effects.ring()
                 }
+                // Nothing to carry out: at midnight a new Tageskontingent starts. The plan below calculates again from the
+                // new day (a ringing Alarm ends if the Restzeit is above 0 again, the next times come from `domain`).
+                Ausloeser.MITTERNACHT -> Unit
                 Ausloeser.AUTOMATISCHER_STOPP -> {
                     // The end is the time the limit was reached, like at the server (the earlier end wins, so no conflict).
                     val zeitpunkt = faellig.first { it.ausloeser == Ausloeser.AUTOMATISCHER_STOPP }.zeitpunkt

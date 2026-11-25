@@ -20,6 +20,13 @@ enum class Ausloeser {
      * Ende der Sitzung, auch wenn er schon vorbei ist (Gerät oder Server war nicht erreichbar).
      */
     AUTOMATISCHER_STOPP,
+
+    /**
+     * Mitternacht in der Familien-Zeitzone, während eine Sitzung über sie hinaus läuft: ein neuer Tag mit neuem
+     * Tageskontingent beginnt. Es gibt nichts auszuführen, der Alarmkern rechnet nur neu (ein klingender Alarm
+     * verstummt, wenn das neue Kontingent Restzeit lässt) und der Server wacht für eine Neubewertung auf.
+     */
+    MITTERNACHT,
 }
 
 data class FaelligerZeitpunkt(val ausloeser: Ausloeser, val zeitpunkt: Instant)
@@ -64,8 +71,8 @@ data class FaelligeZeitpunkte(val liste: List<FaelligerZeitpunkt>) {
  * - Alarm: wenn die Restzeit 0 erreicht, sofort bei Restzeit 0. Danach alle 5 Minuten nach dem letzten Klingeln.
  * - Automatischer Stopp: wenn die Überziehung die Überziehungsgrenze erreicht (Ende der Sitzung). Alles, was nicht vor
  *   dem Stopp liegt, entfällt. Ist der Stopp schon vorbei, steht er mit seinem tatsächlichen Zeitpunkt (nicht `jetzt`) an.
- * - Zeitpunkte nach Tagesende (Mitternacht) gibt es nicht: dann gilt ein neues Tageskontingent, und die Neuplanung
- *   zu Mitternacht (Ticket 11) rechnet neu.
+ * - Zeitpunkte nach Tagesende gibt es nicht: dann gilt ein neues Tageskontingent. Läuft die Sitzung über Mitternacht
+ *   hinaus (der Stopp liegt dahinter), steht stattdessen [Ausloeser.MITTERNACHT] an, und die Neuplanung rechnet neu.
  */
 fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmverlauf.KEINER): FaelligeZeitpunkte {
     val stand = tagesstand(jetzt)
@@ -92,5 +99,7 @@ fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmve
     // Mit dem Stopp endet die Sitzung: danach klingelt nichts mehr.
     liste.removeAll { it.zeitpunkt >= stopp }
     liste += FaelligerZeitpunkt(Ausloeser.AUTOMATISCHER_STOPP, stopp)
+    // Läuft die Sitzung über Mitternacht hinaus, gilt danach ein neues Kontingent: zu Mitternacht neu rechnen.
+    if (stopp > stand.tagesende) liste += FaelligerZeitpunkt(Ausloeser.MITTERNACHT, stand.tagesende)
     return FaelligeZeitpunkte(liste.filter { !it.zeitpunkt.isAfter(stand.tagesende) }.sortedBy { it.zeitpunkt })
 }
