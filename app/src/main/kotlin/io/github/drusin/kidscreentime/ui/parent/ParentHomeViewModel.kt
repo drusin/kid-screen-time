@@ -26,8 +26,11 @@ data class ParentHomeUiState(
     val ownDeviceId: String? = null,
     /** Familien-Zeitzone (IANA id) from the snapshot, for times on the Status-Karte. */
     val timeZone: String? = null,
-    /** The Eltern-Snapshot could not be loaded. The ticket 17 cache will show the last known state instead. */
-    val unavailable: Boolean = false,
+    /**
+     * The server cannot be reached (ticket 17): the screens show the last known state from the cache, with the bar
+     * "Offline · nur Ansicht", and every Eltern-Aktion is off (see [canAct]). Cleared by the next successful load.
+     */
+    val offline: Boolean = false,
     /** "Heute anpassen": the prepared Tagesanpassung in minutes (Stepper, multiple of 5), 0 = nothing prepared. */
     val pendingAdjustment: Int = 0,
     /** An Eltern-Aktion is on its way to the server. */
@@ -45,13 +48,26 @@ data class ParentHomeUiState(
     val previewAllowanceMinutes: Int?
         get() = child?.status?.allowance?.let { (it.templateMinutes + it.adjustmentMinutes + pendingAdjustment).coerceAtLeast(0) }
 
-    val canBook: Boolean get() = child != null && pendingAdjustment != 0 && !acting
+    /**
+     * The one switch of all Eltern-Aktionen (Buchen, Zurücknehmen, Wochenvorlage, Regeln, Koppeln, Entkoppeln): none is
+     * possible while another is on its way or while the Elterngerät is [offline]. Screens enable their controls with this.
+     */
+    val canAct: Boolean get() = !acting && !offline
+
+    val canBook: Boolean get() = child != null && pendingAdjustment != 0 && canAct
+
+    /**
+     * "Stand bekannt seit": the last contact of the Kindgerät with the server (its "zuletzt gesehen" in the Geräteliste),
+     * i.e. how old the shown state of the Kindgerät can be. Null when the Kind has no Kindgerät or it never reported.
+     */
+    val knownSinceEpochMillis: Long?
+        get() = child?.let { kid -> devices.firstOrNull { it.role == DeviceRole.CHILD && it.childId == kid.childId }?.lastSeenEpochMillis }
 
     /** The delta "Letzte zurücknehmen" would take back, null when there is none (the button is hidden). */
     val undoableAdjustmentMinutes: Int? get() = child?.lastAdjustmentMinutes
 
     /** Only the last Elterngerät cannot be entkoppelt (the server refuses it, the button is disabled). */
-    fun canUnpair(device: DeviceInfo): Boolean = !acting && (device.role != DeviceRole.PARENT || devices.count { it.role == DeviceRole.PARENT } > 1)
+    fun canUnpair(device: DeviceInfo): Boolean = canAct && (device.role != DeviceRole.PARENT || devices.count { it.role == DeviceRole.PARENT } > 1)
 
     /** Hinweis "noch kein Kind gekoppelt". */
     val showNoChildHint: Boolean get() = children.isEmpty()
@@ -88,7 +104,7 @@ class ParentHomeViewModel(
     fun undoLastAdjustment() {
         val current = _state.value
         val child = current.child ?: return
-        if (current.acting || current.undoableAdjustmentMinutes == null) return
+        if (!current.canAct || current.undoableAdjustmentMinutes == null) return
         runAction { repository.undoLastAdjustment(child.childId) }
     }
 
@@ -99,7 +115,7 @@ class ParentHomeViewModel(
     fun saveWeeklyTemplate(minutes: List<Int>, onDone: () -> Unit = {}) {
         val current = _state.value
         val child = current.child ?: return
-        if (current.acting || minutes.size != 7 || minutes.any { it !in 0..MAX_ADJUSTMENT }) return
+        if (!current.canAct || minutes.size != 7 || minutes.any { it !in 0..MAX_ADJUSTMENT }) return
         runAction(onDone) { repository.setWeeklyTemplate(child.childId, minutes) }
     }
 
@@ -107,7 +123,7 @@ class ParentHomeViewModel(
     fun saveRules(name: String, warningThresholdMinutes: Int, overrunLimitMinutes: Int, onDone: () -> Unit = {}) {
         val current = _state.value
         val child = current.child ?: return
-        if (current.acting || name.isBlank() || warningThresholdMinutes !in 0..MAX_ADJUSTMENT || overrunLimitMinutes !in 0..MAX_ADJUSTMENT) return
+        if (!current.canAct || name.isBlank() || warningThresholdMinutes !in 0..MAX_ADJUSTMENT || overrunLimitMinutes !in 0..MAX_ADJUSTMENT) return
         runAction(onDone) { repository.setRules(child.childId, name.trim(), warningThresholdMinutes, overrunLimitMinutes) }
     }
 
@@ -130,6 +146,7 @@ class ParentHomeViewModel(
      * loaded again, because then the screen was out of date (for example a second Elterngerät booked meanwhile).
      */
     private fun runAction(onDone: () -> Unit = {}, call: suspend () -> ParentActionResult) {
+        if (!_state.value.canAct) return
         _state.update { it.copy(acting = true, actionFailed = false) }
         viewModelScope.launch {
             when (val result = call()) {
@@ -141,13 +158,20 @@ class ParentHomeViewModel(
                     _state.update { it.copy(acting = false, actionFailed = true) }
                     refresh()
                 }
-                ParentActionResult.Unauthorized, ParentActionResult.Unavailable -> _state.update { it.copy(acting = false, actionFailed = true) }
+                ParentActionResult.Unauthorized -> _state.update { it.copy(acting = false, actionFailed = true) }
+                // No network: from now on the screens are read-only until a load succeeds again.
+                ParentActionResult.Unavailable -> _state.update { it.copy(acting = false, actionFailed = true, offline = true) }
             }
         }
     }
 
     private fun applySnapshot(state: ParentHomeUiState, snapshot: ParentSnapshot) =
-        state.copy(loading = false, unavailable = false, children = snapshot.children, timeZone = snapshot.timeZone, devices = snapshot.devices, ownDeviceId = repository.ownDeviceId)
+        state.copy(loading = false, offline = false, children = snapshot.children, timeZone = snapshot.timeZone, devices = snapshot.devices, ownDeviceId = repository.ownDeviceId)
+
+    /** Called when the app comes back to the foreground: an offline Elterngerät tries the server again (the Abgleich at app start is [refresh] in `init`). */
+    fun refreshIfOffline() {
+        if (_state.value.offline) refresh()
+    }
 
     fun refresh() {
         _state.update { it.copy(loading = true) }
@@ -156,7 +180,9 @@ class ParentHomeViewModel(
             _state.update {
                 when (result) {
                     is SnapshotResult.Loaded -> applySnapshot(it, result.snapshot)
-                    SnapshotResult.Unauthorized, SnapshotResult.Unavailable -> it.copy(loading = false, unavailable = true)
+                    is SnapshotResult.Cached -> applySnapshot(it, result.snapshot).copy(offline = true)
+                    SnapshotResult.Unavailable -> it.copy(loading = false, offline = true)
+                    SnapshotResult.Unauthorized -> it.copy(loading = false)
                 }
             }
         }

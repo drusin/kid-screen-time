@@ -69,6 +69,27 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun `Die Migration auf Version 3 behält Kind-Snapshot und Outbox und legt den leeren Eltern-Snapshot-Cache an`() {
+        createOldDatabase(2) {
+            it.execSQL("INSERT INTO child_snapshot (id, json, receivedAtEpochMillis) VALUES (0, '{}', 42)")
+            it.execSQL("INSERT INTO outbox_session (sessionId, startMonotonicMillis, startWallMillis, revision) VALUES ('s1', 1, 2, 0)")
+        }
+
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, DB).addMigrations(*AppDatabase.MIGRATIONS).build()
+        try {
+            runBlocking {
+                assertEquals(42L, db.childSnapshotDao().current()?.receivedAtEpochMillis)
+                assertEquals(listOf("s1"), db.outboxDao().all().map { it.sessionId })
+                assertEquals(null, db.parentSnapshotDao().current())
+                db.parentSnapshotDao().save(ParentSnapshotEntity(json = "{}", receivedAtEpochMillis = 7))
+                assertEquals(7L, db.parentSnapshotDao().current()?.receivedAtEpochMillis)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

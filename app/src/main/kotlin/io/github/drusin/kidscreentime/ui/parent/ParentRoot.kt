@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -20,6 +22,7 @@ fun ParentRoot(container: AppContainer) {
     val home = viewModel<ParentHomeViewModel>(factory = viewModelFactory {
         initializer { ParentHomeViewModel(container.parentRepository, container.pushHandler.signals) }
     })
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { home.refreshIfOffline() }
     var pairingOpenings by rememberSaveable { mutableIntStateOf(0) }
     var pairingOpen by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }

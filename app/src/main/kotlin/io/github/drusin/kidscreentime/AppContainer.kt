@@ -65,7 +65,7 @@ class AppContainer(
         unregisterPush()
         pushRepository.onUnregistered()
     })
-    val parentRepository = ParentRepository(httpClient, pairingRepository)
+    val parentRepository = ParentRepository(httpClient, pairingRepository, database.parentSnapshotDao(), wallClock)
     val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry)
     val pushRepository: PushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
     val pushHandler = PushHandler(pairingRepository, childRepository)

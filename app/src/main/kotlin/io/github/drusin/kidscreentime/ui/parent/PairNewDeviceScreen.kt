@@ -59,7 +59,7 @@ fun PairNewDeviceScreen(viewModel: PairNewDeviceViewModel, onClose: () -> Unit) 
             val code = state.code
             when {
                 state.loading -> CircularProgressIndicator()
-                state.unavailable -> Text(stringResource(R.string.parent_home_unavailable), color = MaterialTheme.colorScheme.error)
+                state.unavailable -> OfflineBar(onRetry = null)
                 code != null -> CodeView(code, viewModel, onClose)
                 state.role == null -> RoleChoice(state, viewModel)
                 else -> ChildDetails(state, viewModel)
