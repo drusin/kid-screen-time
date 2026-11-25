@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,7 @@ import io.github.drusin.kidscreentime.ui.theme.stateColor
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import io.github.drusin.kidscreentime.ui.toMinutesRoundedUp
@@ -74,16 +76,14 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onOpenWeeklyTemplate: () ->
             modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (state.offline) OfflineBar(onRetry = viewModel::refresh)
             if (state.showNoChildHint) {
                 Text(stringResource(R.string.parent_home_no_child_title), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.parent_home_no_child_hint), style = MaterialTheme.typography.bodyLarge)
             } else {
-                state.children.forEach { StatusCard(it, state.timeZone) }
+                state.children.forEach { StatusCard(it, state.timeZone, state.knownSinceEpochMillis) }
                 if (state.child?.status != null) AdjustTodayCard(state, viewModel)
                 state.child?.let { WeeklyTemplateRow(it, onOpenWeeklyTemplate) }
-            }
-            if (state.unavailable) {
-                Text(stringResource(R.string.parent_home_unavailable), color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -91,7 +91,7 @@ fun ParentHomeScreen(viewModel: ParentHomeViewModel, onOpenWeeklyTemplate: () ->
 
 /** Status-Karte: remaining time, progress bar and the breakdown of the Tageskontingent, as the server calculated it. */
 @Composable
-private fun StatusCard(child: ParentChildSnapshot, timeZone: String?) {
+private fun StatusCard(child: ParentChildSnapshot, timeZone: String?, knownSince: Long?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(child.name, style = MaterialTheme.typography.titleLarge)
@@ -129,6 +129,30 @@ private fun StatusCard(child: ParentChildSnapshot, timeZone: String?) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (knownSince != null) {
+                val zone = timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneOffset.UTC
+                Text(
+                    stringResource(R.string.parent_status_known_since, DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm", Locale.GERMANY).format(Instant.ofEpochMilli(knownSince).atZone(zone))),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** The bar "Offline · nur Ansicht" on top of every Eltern-Bildschirm while the server cannot be reached; [onRetry] tries again. */
+@Composable
+internal fun OfflineBar(onRetry: (() -> Unit)?) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.offline_bar),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+            if (onRetry != null) TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
         }
     }
 }
@@ -140,11 +164,11 @@ private fun AdjustTodayCard(state: ParentHomeUiState, viewModel: ParentHomeViewM
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.parent_adjust_title), style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedButton(onClick = { viewModel.stepAdjustment(-ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = !state.acting) {
+                OutlinedButton(onClick = { viewModel.stepAdjustment(-ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = state.canAct) {
                     Text(stringResource(R.string.parent_adjust_minus))
                 }
                 Text(signedMinutesText(state.pendingAdjustment), style = MaterialTheme.typography.headlineSmall)
-                OutlinedButton(onClick = { viewModel.stepAdjustment(ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = !state.acting) {
+                OutlinedButton(onClick = { viewModel.stepAdjustment(ParentHomeViewModel.ADJUSTMENT_STEP) }, enabled = state.canAct) {
                     Text(stringResource(R.string.parent_adjust_plus))
                 }
             }
@@ -153,7 +177,7 @@ private fun AdjustTodayCard(state: ParentHomeUiState, viewModel: ParentHomeViewM
             }
             Button(onClick = viewModel::bookAdjustment, enabled = state.canBook) { Text(stringResource(R.string.parent_adjust_book)) }
             state.undoableAdjustmentMinutes?.let {
-                TextButton(onClick = viewModel::undoLastAdjustment, enabled = !state.acting) {
+                TextButton(onClick = viewModel::undoLastAdjustment, enabled = state.canAct) {
                     Text(stringResource(R.string.parent_adjust_undo, signedMinutesText(it)))
                 }
             }

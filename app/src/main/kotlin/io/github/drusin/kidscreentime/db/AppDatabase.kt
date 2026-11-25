@@ -19,11 +19,13 @@ import kotlinx.coroutines.flow.Flow
  * A new entity means: add it to `entities`, raise `version`, add a `Migration` to [MIGRATIONS] (the schema JSON of
  * every version is committed in `app/schemas`; `AppDatabaseMigrationTest` checks every step).
  */
-@Database(entities = [ChildSnapshotEntity::class, OutboxSessionEntity::class], version = 2, exportSchema = true)
+@Database(entities = [ChildSnapshotEntity::class, OutboxSessionEntity::class, ParentSnapshotEntity::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun childSnapshotDao(): ChildSnapshotDao
 
     abstract fun outboxDao(): OutboxDao
+
+    abstract fun parentSnapshotDao(): ParentSnapshotDao
 
     companion object {
         const val FILE_NAME = "kid-screen-time.db"
@@ -39,7 +41,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+        /** Version 3 (ticket 17): the cached Eltern-Snapshot for the offline view of the Elterngerät. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `parent_snapshot` (`id` INTEGER NOT NULL, `json` TEXT NOT NULL, " +
+                        "`receivedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, FILE_NAME).addMigrations(*MIGRATIONS).build()
@@ -110,5 +122,29 @@ interface OutboxDao {
     suspend fun deleteDelivered(sessionId: String, revision: Int)
 
     @Query("DELETE FROM outbox_session")
+    suspend fun clear()
+}
+
+/**
+ * The last complete Eltern-Snapshot (always exactly one row, [id] is 0), stored as the JSON of the REST contract, like
+ * [ChildSnapshotEntity]. The Elterngerät shows it read-only when the server cannot be reached (ticket 17). It is
+ * deleted when the Kopplung ends. [receivedAtEpochMillis] is the device wall time of the last successful load.
+ */
+@Entity(tableName = "parent_snapshot")
+data class ParentSnapshotEntity(
+    @PrimaryKey val id: Int = 0,
+    val json: String,
+    val receivedAtEpochMillis: Long,
+)
+
+@Dao
+interface ParentSnapshotDao {
+    @Query("SELECT * FROM parent_snapshot WHERE id = 0")
+    suspend fun current(): ParentSnapshotEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun save(entity: ParentSnapshotEntity)
+
+    @Query("DELETE FROM parent_snapshot")
     suspend fun clear()
 }

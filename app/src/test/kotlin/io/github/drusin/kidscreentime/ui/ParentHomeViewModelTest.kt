@@ -50,7 +50,7 @@ class ParentHomeViewModelTest {
 
         assertTrue(viewModel.state.value.showNoChildHint)
         assertFalse(viewModel.state.value.loading)
-        assertFalse(viewModel.state.value.unavailable)
+        assertFalse(viewModel.state.value.offline)
     }
 
     @Test
@@ -69,18 +69,18 @@ class ParentHomeViewModelTest {
         val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
-        assertTrue(viewModel.state.value.unavailable)
+        assertTrue(viewModel.state.value.offline)
         assertTrue(viewModel.state.value.showNoChildHint)
     }
 
     @Test
-    fun `Eine Antwort 401 entkoppelt das Gerät in der App und die Startseite meldet es als nicht verfügbar`() = runTest {
+    fun `Eine Antwort 401 entkoppelt das Gerät in der App und gilt nicht als offline`() = runTest {
         app.handler = { respond("", HttpStatusCode.Unauthorized) }
 
         val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
-        assertTrue(viewModel.state.value.unavailable)
+        assertFalse(viewModel.state.value.offline)
         assertEquals(io.github.drusin.kidscreentime.pairing.DeviceState.Revoked, app.container.pairingRepository.state.value)
     }
 

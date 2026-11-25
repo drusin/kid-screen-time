@@ -162,4 +162,18 @@ class DeviceManagementScenarioTest {
         assertEquals(io.github.drusin.kidscreentime.parent.SnapshotResult.Unauthorized, result)
         assertEquals(DeviceState.Revoked, mama.app.container.pairingRepository.state.value)
     }
+
+    @Test
+    fun `Ein Elterngerät ohne Netz liest den zuletzt geladenen Stand vom echten Server und bucht nichts`() = scenario {
+        val mama = pairParentDevice()
+        pairChildDevice()
+        assertIs<io.github.drusin.kidscreentime.parent.SnapshotResult.Loaded>(mama.app.container.parentRepository.loadSnapshot())
+        mama.offline = true
+
+        val result = mama.app.container.parentRepository.loadSnapshot()
+
+        val cached = assertIs<io.github.drusin.kidscreentime.parent.SnapshotResult.Cached>(result)
+        assertEquals("Mia", cached.snapshot.children.single().name)
+        assertEquals(ParentActionResult.Unavailable, mama.app.container.parentRepository.bookAdjustment(cached.snapshot.children.single().childId, 5))
+    }
 }

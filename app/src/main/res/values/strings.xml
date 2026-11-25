@@ -20,6 +20,8 @@
     <string name="parent_home_no_child_title">Noch kein Kind gekoppelt</string>
     <string name="parent_home_no_child_hint">Sobald ein Kindgerät gekoppelt ist, erscheint hier der Stand.</string>
     <string name="parent_home_unavailable">Der Server ist nicht erreichbar.</string>
+    <string name="offline_bar">Offline · nur Ansicht</string>
+    <string name="parent_status_known_since">Stand bekannt seit %1$s</string>
     <string name="retry">Erneut versuchen</string>
     <string name="back">Zurück</string>
     <string name="done">Fertig</string>
