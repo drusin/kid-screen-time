@@ -12,7 +12,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.drusin.kidscreentime.AppContainer
 
 /**
- * The screens of a Elterngerät: the Startseite and, on top of it, "Gerät koppeln". There is no NavHost: a flag
+ * The screens of a Elterngerät: the Startseite and, on top of it, "Gerät koppeln", "Einstellungen & Geräte" and the "Wochenvorlage" dialog. There is no NavHost: a flag
  * opens the pairing screen, and every opening gets a fresh ViewModel through the counter in its key.
  */
 @Composable
@@ -22,6 +22,8 @@ fun ParentRoot(container: AppContainer) {
     })
     var pairingOpenings by rememberSaveable { mutableIntStateOf(0) }
     var pairingOpen by rememberSaveable { mutableStateOf(false) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var templateOpen by rememberSaveable { mutableStateOf(false) }
     if (pairingOpen) {
         PairNewDeviceScreen(
             viewModel = viewModel<PairNewDeviceViewModel>(key = "pair-new-device-$pairingOpenings", factory = viewModelFactory {
@@ -32,10 +34,14 @@ fun ParentRoot(container: AppContainer) {
                 home.refresh()
             },
         )
-    } else {
-        ParentHomeScreen(home, onPairDevice = {
+    } else if (settingsOpen) {
+        ParentSettingsScreen(home, onClose = { settingsOpen = false }, onPairDevice = {
             pairingOpenings++
             pairingOpen = true
         })
+    } else if (templateOpen) {
+        WeeklyTemplateScreen(home, onClose = { templateOpen = false })
+    } else {
+        ParentHomeScreen(home, onOpenWeeklyTemplate = { templateOpen = true }, onOpenSettings = { settingsOpen = true })
     }
 }

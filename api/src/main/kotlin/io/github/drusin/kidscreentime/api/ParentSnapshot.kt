@@ -26,6 +26,8 @@ data class ParentChildSnapshot(
     val overrunLimitMinutes: Int? = null,
     /** The Wochenvorlage version that is valid today. */
     val weeklyTemplate: WeeklyTemplateVersion? = null,
+    /** The Wochenvorlage version that is valid tomorrow (differs from [weeklyTemplate] after a change today). */
+    val weeklyTemplateTomorrow: WeeklyTemplateVersion? = null,
     /** The Tagesanpassung "Letzte zurücknehmen" would take back (its delta in minutes), null when there is none today. */
     val lastAdjustmentMinutes: Int? = null,
 )
@@ -37,6 +39,14 @@ data class DailyAdjustmentRequest(val childId: String, val deltaMinutes: Int)
 /** Takes back the last Tagesanpassung of today. */
 @Serializable
 data class UndoDailyAdjustmentRequest(val childId: String)
+
+/** New Wochenvorlage: [minutes] for Monday to Sunday (7 values). Valid from tomorrow. */
+@Serializable
+data class WeeklyTemplateRequest(val childId: String, val minutes: List<Int>)
+
+/** New rules of a Kind: [name], Vorwarnschwelle and Überziehungsgrenze in minutes. */
+@Serializable
+data class RulesRequest(val childId: String, val name: String, val warningThresholdMinutes: Int, val overrunLimitMinutes: Int)
 
 /** Complete state for a Elterngerät. Always the full state, never deltas. */
 @Serializable

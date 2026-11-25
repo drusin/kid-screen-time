@@ -25,6 +25,15 @@ object ApiPaths {
      */
     const val PARENT_DAILY_ADJUSTMENTS_UNDO = "/api/v1/parent/daily-adjustments/undo"
 
+    /**
+     * Elterngerät: set the Wochenvorlage (POST [WeeklyTemplateRequest]). The new version is valid from tomorrow, today's
+     * Tageskontingent stays. Answers with the new [ParentSnapshot] (`400` for an unknown Kind or invalid minutes).
+     */
+    const val PARENT_WEEKLY_TEMPLATE = "/api/v1/parent/weekly-template"
+
+    /** Elterngerät: set the rules of a Kind, Vorwarnschwelle, Überziehungsgrenze and name (POST [RulesRequest]). Answers like every Eltern-Aktion. */
+    const val PARENT_RULES = "/api/v1/parent/rules"
+
     /** Kindgerät: sync (POST). Sends the Outbox ([ChildSyncRequest]) and returns the complete [ChildSnapshot]. */
     const val CHILD_SYNC = "/api/v1/child/sync"
 

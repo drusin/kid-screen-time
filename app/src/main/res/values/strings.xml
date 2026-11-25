@@ -59,6 +59,17 @@
     <string name="parent_adjust_undo">Letzte zurücknehmen (%1$s)</string>
     <string name="parent_adjust_failed">Das hat nicht geklappt. Bitte erneut versuchen.</string>
     <string name="parent_status_breakdown">Wochenvorlage %1$s, Anpassung %2$s</string>
+    <string name="weekly_template_title">Wochenvorlage</string>
+    <string name="weekly_template_from_tomorrow">Eine Änderung gilt ab morgen. Das heutige Kontingent bleibt, wie es ist.</string>
+    <string name="settings_title">Einstellungen &amp; Geräte</string>
+    <string name="settings_menu">Menü</string>
+    <string name="settings_rules">Regeln</string>
+    <string name="settings_child_name">Name des Kindes</string>
+    <string name="settings_warning_threshold">Vorwarnschwelle</string>
+    <string name="settings_overrun_limit">Überziehungsgrenze</string>
+    <string name="settings_rules_hint">Das Tablet übernimmt die Regeln beim nächsten Sync.</string>
+    <string name="settings_save">Speichern</string>
+    <string name="settings_devices">Geräte</string>
     <string name="pair_new_device_title">Gerät koppeln</string>
     <string name="pair_new_device_choose_role">Welches Gerät möchtest du koppeln?</string>
     <string name="pair_new_device_child_device_for">Kindgerät für %1$s</string>

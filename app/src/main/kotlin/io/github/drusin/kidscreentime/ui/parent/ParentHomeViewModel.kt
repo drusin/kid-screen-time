@@ -84,15 +84,42 @@ class ParentHomeViewModel(
     }
 
     /**
+     * Saves the Wochenvorlage ([minutes] Mo–So); it is valid from tomorrow. [onDone] runs when the server accepted it
+     * (the dialog closes then). On failure the dialog stays open with its input.
+     */
+    fun saveWeeklyTemplate(minutes: List<Int>, onDone: () -> Unit = {}) {
+        val current = _state.value
+        val child = current.child ?: return
+        if (current.acting || minutes.size != 7 || minutes.any { it !in 0..MAX_ADJUSTMENT }) return
+        runAction(onDone) { repository.setWeeklyTemplate(child.childId, minutes) }
+    }
+
+    /** Saves name, Vorwarnschwelle and Überziehungsgrenze of the Kind. [onDone] as in [saveWeeklyTemplate]. */
+    fun saveRules(name: String, warningThresholdMinutes: Int, overrunLimitMinutes: Int, onDone: () -> Unit = {}) {
+        val current = _state.value
+        val child = current.child ?: return
+        if (current.acting || name.isBlank() || warningThresholdMinutes !in 0..MAX_ADJUSTMENT || overrunLimitMinutes !in 0..MAX_ADJUSTMENT) return
+        runAction(onDone) { repository.setRules(child.childId, name.trim(), warningThresholdMinutes, overrunLimitMinutes) }
+    }
+
+    /** Clears the failure message (a dialog was opened or its input changed). */
+    fun clearActionFailed() {
+        _state.update { it.copy(actionFailed = false) }
+    }
+
+    /**
      * The one pattern of every Eltern-Aktion (tickets 09, 10, 17): the repository call returns the new Eltern-Snapshot,
      * which becomes the screen state (that is the Abgleich, no extra load). When the server refused, the Snapshot is
      * loaded again, because then the screen was out of date (for example a second Elterngerät booked meanwhile).
      */
-    private fun runAction(call: suspend () -> ParentActionResult) {
+    private fun runAction(onDone: () -> Unit = {}, call: suspend () -> ParentActionResult) {
         _state.update { it.copy(acting = true, actionFailed = false) }
         viewModelScope.launch {
             when (val result = call()) {
-                is ParentActionResult.Done -> _state.update { applySnapshot(it, result.snapshot).copy(pendingAdjustment = 0, acting = false) }
+                is ParentActionResult.Done -> {
+                    _state.update { applySnapshot(it, result.snapshot).copy(pendingAdjustment = 0, acting = false) }
+                    onDone()
+                }
                 ParentActionResult.Rejected -> {
                     _state.update { it.copy(acting = false, actionFailed = true) }
                     refresh()
@@ -120,6 +147,9 @@ class ParentHomeViewModel(
 
     companion object {
         const val ADJUSTMENT_STEP = 5
+
+        /** Step of the Wochenvorlage and the rules. */
+        const val SETTINGS_STEP = 5
         const val MAX_ADJUSTMENT = 24 * 60
     }
 }

@@ -1,0 +1,159 @@
+package io.github.drusin.kidscreentime.ui.parent
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.drusin.kidscreentime.R
+import io.github.drusin.kidscreentime.api.ParentChildSnapshot
+import io.github.drusin.kidscreentime.ui.minutesText
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
+
+/** Moves [minutes] by [delta] and keeps the result within 0 to 24 hours. */
+internal fun stepped(minutes: Int, delta: Int): Int = (minutes + delta).coerceIn(0, ParentHomeViewModel.MAX_ADJUSTMENT)
+
+/** One row "label, −, value, +" for a value in minutes. */
+@Composable
+private fun MinutesStepperRow(label: String, minutes: Int, enabled: Boolean, onChange: (Int) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { onChange(stepped(minutes, -ParentHomeViewModel.SETTINGS_STEP)) }, enabled = enabled) { Text(stringResource(R.string.parent_adjust_minus)) }
+        Text(minutesText(minutes), style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(onClick = { onChange(stepped(minutes, ParentHomeViewModel.SETTINGS_STEP)) }, enabled = enabled) { Text(stringResource(R.string.parent_adjust_plus)) }
+    }
+}
+
+/** The row "Wochenvorlage" of the Startseite: shows the template valid tomorrow and opens the full-screen dialog. */
+@Composable
+internal fun WeeklyTemplateRow(child: ParentChildSnapshot, onOpen: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), onClick = onOpen) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.weekly_template_title), style = MaterialTheme.typography.titleMedium)
+            val template = child.weeklyTemplateTomorrow ?: child.weeklyTemplate
+            if (template != null) {
+                Text(
+                    DayOfWeek.entries.zip(template.minutes).joinToString(", ") { (day, minutes) -> day.getDisplayName(TextStyle.SHORT, Locale.GERMANY) + " " + minutes },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** Full-screen dialog "Wochenvorlage": Mo–So at once; a change is valid from tomorrow. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WeeklyTemplateScreen(viewModel: ParentHomeViewModel, onClose: () -> Unit) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val child = state.child
+    val saved = child?.weeklyTemplateTomorrow ?: child?.weeklyTemplate
+    var draft by rememberSaveable { mutableStateOf(saved?.minutes?.toIntArray() ?: IntArray(7)) }
+    LaunchedEffect(Unit) { viewModel.clearActionFailed() }
+    BackHandler(onBack = onClose)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.weekly_template_title)) },
+                navigationIcon = { TextButton(onClick = onClose) { Text(stringResource(R.string.back)) } },
+            )
+        },
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.weekly_template_from_tomorrow), style = MaterialTheme.typography.bodyLarge)
+            DayOfWeek.entries.forEachIndexed { index, day ->
+                MinutesStepperRow(day.getDisplayName(TextStyle.FULL, Locale.GERMANY), draft[index], !state.acting) { value ->
+                    draft = draft.copyOf().also { it[index] = value }
+                    viewModel.clearActionFailed()
+                }
+            }
+            Button(
+                onClick = { viewModel.saveWeeklyTemplate(draft.toList(), onDone = onClose) },
+                enabled = child != null && !state.acting && saved?.minutes != draft.toList(),
+            ) { Text(stringResource(R.string.settings_save)) }
+            if (state.actionFailed) Text(stringResource(R.string.parent_adjust_failed), color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+/**
+ * "Einstellungen & Geräte" (the ⋮ menu): the rules of the Kind and the way to pair a device. Ticket 12 adds the Geräteliste
+ * to the "Geräte" section (below the pairing button).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParentSettingsScreen(viewModel: ParentHomeViewModel, onPairDevice: () -> Unit, onClose: () -> Unit) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val child = state.child
+    LaunchedEffect(Unit) { viewModel.clearActionFailed() }
+    BackHandler(onBack = onClose)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_title)) },
+                navigationIcon = { TextButton(onClick = onClose) { Text(stringResource(R.string.back)) } },
+            )
+        },
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (child != null) RulesSection(child, state.acting, state.actionFailed, viewModel)
+            Text(stringResource(R.string.settings_devices), style = MaterialTheme.typography.titleLarge)
+            Button(onClick = onPairDevice) { Text(stringResource(R.string.pair_device_title)) }
+        }
+    }
+}
+
+@Composable
+private fun RulesSection(child: ParentChildSnapshot, acting: Boolean, failed: Boolean, viewModel: ParentHomeViewModel) {
+    // The input starts from the saved rules; a Resync-Signal while typing does not overwrite it.
+    var name by rememberSaveable { mutableStateOf(child.name) }
+    var warning by rememberSaveable { mutableStateOf(child.warningThresholdMinutes ?: 5) }
+    var overrun by rememberSaveable { mutableStateOf(child.overrunLimitMinutes ?: 60) }
+    val changed = name.trim() != child.name || warning != child.warningThresholdMinutes || overrun != child.overrunLimitMinutes
+    Text(stringResource(R.string.settings_rules), style = MaterialTheme.typography.titleLarge)
+    OutlinedTextField(
+        value = name,
+        onValueChange = { name = it; viewModel.clearActionFailed() },
+        label = { Text(stringResource(R.string.settings_child_name)) },
+        singleLine = true,
+        enabled = !acting,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    MinutesStepperRow(stringResource(R.string.settings_warning_threshold), warning, !acting) { warning = it; viewModel.clearActionFailed() }
+    MinutesStepperRow(stringResource(R.string.settings_overrun_limit), overrun, !acting) { overrun = it; viewModel.clearActionFailed() }
+    Text(stringResource(R.string.settings_rules_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Button(onClick = { viewModel.saveRules(name, warning, overrun) }, enabled = changed && name.isNotBlank() && !acting) {
+        Text(stringResource(R.string.settings_save))
+    }
+    if (failed) Text(stringResource(R.string.parent_adjust_failed), color = MaterialTheme.colorScheme.error)
+}

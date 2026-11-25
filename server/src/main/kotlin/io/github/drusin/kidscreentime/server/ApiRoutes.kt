@@ -8,7 +8,9 @@ import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.ParentSnapshot
+import io.github.drusin.kidscreentime.api.RulesRequest
 import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.WeeklyTemplateRequest
 import io.github.drusin.kidscreentime.api.PushRegistration
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeRequest
 import io.ktor.http.HttpHeaders
@@ -121,6 +123,48 @@ fun Route.apiRoutes(services: ServerServices) {
                 call.respond(parentSnapshot(services))
                 services.push.signalChild(request.childId)
             }
+        }
+    }
+
+    authenticatedPost(ApiPaths.PARENT_WEEKLY_TEMPLATE, services, DeviceRole.PARENT) {
+        val request = call.receive<WeeklyTemplateRequest>()
+        val problem = when {
+            request.minutes.size != 7 -> "Die Wochenvorlage braucht sieben Werte (Mo–So)"
+            request.minutes.any { it < 0 || it > MAX_ADJUSTMENT_MINUTES } -> "Ein Tageskontingent liegt außerhalb von 0 bis 24 Stunden"
+            else -> null
+        }
+        if (problem != null) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(problem))
+            return@authenticatedPost
+        }
+        when (services.children.setWeeklyTemplate(request.childId, request.minutes)) {
+            ChildService.ChangeResult.Changed -> {
+                call.respond(parentSnapshot(services))
+                services.push.signalChild(request.childId)
+            }
+            ChildService.ChangeResult.UnknownChild -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
+        }
+    }
+
+    authenticatedPost(ApiPaths.PARENT_RULES, services, DeviceRole.PARENT) {
+        val request = call.receive<RulesRequest>()
+        val name = request.name.trim()
+        val problem = when {
+            name.isEmpty() -> "Der Name des Kindes fehlt"
+            request.warningThresholdMinutes !in 0..MAX_ADJUSTMENT_MINUTES -> "Die Vorwarnschwelle ist ungültig"
+            request.overrunLimitMinutes !in 0..MAX_ADJUSTMENT_MINUTES -> "Die Überziehungsgrenze ist ungültig"
+            else -> null
+        }
+        if (problem != null) {
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(problem))
+            return@authenticatedPost
+        }
+        when (services.children.setRules(request.childId, name, request.warningThresholdMinutes, request.overrunLimitMinutes)) {
+            ChildService.ChangeResult.Changed -> {
+                call.respond(parentSnapshot(services))
+                services.push.signalChild(request.childId)
+            }
+            ChildService.ChangeResult.UnknownChild -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
         }
     }
 

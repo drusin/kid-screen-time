@@ -193,6 +193,49 @@ class ChildService(
         return result
     }
 
+    /**
+     * Sets the Wochenvorlage as a new version valid from tomorrow (a second change today replaces that version; today's
+     * Tageskontingent stays). No midnight job: the Wochenvorlage picks the version by date.
+     */
+    fun setWeeklyTemplate(childId: String, minutes: List<Int>): ChangeResult {
+        val now = wallClock.now()
+        val validFrom = now.atZone(zone).toLocalDate().plusDays(1)
+        val result = database.transaction { c ->
+            if (!childExists(c, childId)) return@transaction ChangeResult.UnknownChild
+            c.prepareStatement(
+                "INSERT OR REPLACE INTO weekly_template_versions (child_id, valid_from, mon, tue, wed, thu, fri, sat, sun) VALUES (?,?,?,?,?,?,?,?,?)",
+            ).use {
+                it.setString(1, childId)
+                it.setString(2, validFrom.toString())
+                minutes.forEachIndexed { index, value -> it.setInt(3 + index, value) }
+                it.executeUpdate()
+            }
+            ChangeResult.Changed
+        }
+        if (result == ChangeResult.Changed) notifyStandChanged()
+        return result
+    }
+
+    /** Sets name, Vorwarnschwelle and Überziehungsgrenze of the Kind (they apply right away). */
+    fun setRules(childId: String, name: String, warningMinutes: Int, overrunMinutes: Int): ChangeResult {
+        val result = database.transaction { c ->
+            val changed = c.prepareStatement(
+                "UPDATE children SET name = ?, warning_threshold_minutes = ?, overrun_limit_minutes = ? WHERE id = ?",
+            ).use {
+                it.setString(1, name)
+                it.setInt(2, warningMinutes)
+                it.setInt(3, overrunMinutes)
+                it.setString(4, childId)
+                it.executeUpdate()
+            }
+            if (changed == 1) ChangeResult.Changed else ChangeResult.UnknownChild
+        }
+        if (result == ChangeResult.Changed) notifyStandChanged()
+        return result
+    }
+
+    enum class ChangeResult { Changed, UnknownChild }
+
     enum class AdjustmentResult { Booked, UnknownChild, NothingToTakeBack }
 
     private fun childExists(c: Connection, childId: String): Boolean =
@@ -332,6 +375,7 @@ class ChildService(
                 warningThresholdMinutes = stand.vorwarnschwelle.toMinutes().toInt(),
                 overrunLimitMinutes = stand.ueberziehungsgrenze.toMinutes().toInt(),
                 weeklyTemplate = stand.wochenvorlage.dtoFor(tag),
+                weeklyTemplateTomorrow = stand.wochenvorlage.dtoFor(tag.plusDays(1)),
                 lastAdjustmentMinutes = loaded.lastAdjustment,
             )
         }

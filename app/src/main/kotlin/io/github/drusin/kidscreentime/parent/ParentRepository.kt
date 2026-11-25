@@ -4,7 +4,9 @@ import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.RulesRequest
 import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.WeeklyTemplateRequest
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.pairing.PairingRepository
@@ -108,6 +110,14 @@ class ParentRepository(
     /** Takes back the last Tagesanpassung of today (the server books the Gegenbuchung). */
     suspend fun undoLastAdjustment(childId: String): ParentActionResult =
         action(ApiPaths.PARENT_DAILY_ADJUSTMENTS_UNDO, UndoDailyAdjustmentRequest(childId))
+
+    /** Sets the Wochenvorlage ([minutes] Mo–So), valid from tomorrow. */
+    suspend fun setWeeklyTemplate(childId: String, minutes: List<Int>): ParentActionResult =
+        action(ApiPaths.PARENT_WEEKLY_TEMPLATE, WeeklyTemplateRequest(childId, minutes))
+
+    /** Sets name, Vorwarnschwelle and Überziehungsgrenze of the Kind. */
+    suspend fun setRules(childId: String, name: String, warningThresholdMinutes: Int, overrunLimitMinutes: Int): ParentActionResult =
+        action(ApiPaths.PARENT_RULES, RulesRequest(childId, name, warningThresholdMinutes, overrunLimitMinutes))
 
     /** The one way a Eltern-Aktion goes to the server: POST [body] to [path], expect the new [ParentSnapshot]. */
     private suspend inline fun <reified T : Any> action(path: String, body: T): ParentActionResult {

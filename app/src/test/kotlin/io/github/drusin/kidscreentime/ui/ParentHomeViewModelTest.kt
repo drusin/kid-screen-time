@@ -212,6 +212,74 @@ class ParentHomeViewModelTest {
         assertFalse(viewModel.state.value.actionFailed, "Eine neue Eingabe nimmt die Meldung weg")
     }
 
+    private fun snapshotWithRules(name: String, warning: Int, overrun: Int, tomorrow: String) =
+        """{"serverTimeEpochMillis":1,"devices":[],"children":[{"childId":"k1","name":"$name","warningThresholdMinutes":$warning,""" +
+            """"overrunLimitMinutes":$overrun,"weeklyTemplate":{"validFrom":"2026-01-01","minutes":[60,60,60,60,60,120,120]},""" +
+            """"weeklyTemplateTomorrow":{"validFrom":"2026-01-06","minutes":$tomorrow}}]}"""
+
+    @Test
+    fun `Wochenvorlage speichern schickt sieben Werte und übernimmt den Snapshot der Antwort`() = runTest {
+        val viewModel = viewModelWith()
+        app.handler = { request ->
+            if (request.url.encodedPath == ApiPaths.PARENT_WEEKLY_TEMPLATE) respondJson(snapshotWithRules("Mia", 5, 60, "[30,45,60,60,60,90,150]"))
+            else respondJson(snapshotWith(0))
+        }
+        var done = false
+
+        viewModel.saveWeeklyTemplate(listOf(30, 45, 60, 60, 60, 90, 150)) { done = true }
+        viewModel.state.await { it.child?.weeklyTemplateTomorrow != null }
+
+        val post = app.requests.last { it.method.value == "POST" }
+        assertEquals("https://kst.example.org" + ApiPaths.PARENT_WEEKLY_TEMPLATE, post.url.toString())
+        assertEquals("""{"childId":"k1","minutes":[30,45,60,60,60,90,150]}""", bodyOf(post))
+        assertEquals(listOf(30, 45, 60, 60, 60, 90, 150), viewModel.state.value.child?.weeklyTemplateTomorrow?.minutes)
+        viewModel.state.await { !it.acting }
+        assertTrue(done, "Der Dialog schließt, wenn der Server zugestimmt hat")
+        assertEquals(1, app.requests.count { it.method.value == "POST" }, "Der Snapshot der Antwort ist der Abgleich")
+    }
+
+    @Test
+    fun `Eine Wochenvorlage mit falscher Anzahl oder unmöglichen Werten wird gar nicht erst geschickt`() = runTest {
+        val viewModel = viewModelWith()
+
+        viewModel.saveWeeklyTemplate(listOf(60, 60))
+        viewModel.saveWeeklyTemplate(listOf(60, 60, 60, 60, 60, 60, -5))
+        viewModel.saveRules("  ", 5, 60)
+        viewModel.saveRules("Mia", -5, 60)
+
+        assertTrue(app.requests.none { it.method.value == "POST" })
+    }
+
+    @Test
+    fun `Regeln speichern schickt Name, Vorwarnschwelle und Überziehungsgrenze und zeigt den neuen Stand`() = runTest {
+        val viewModel = viewModelWith()
+        app.handler = { request ->
+            if (request.url.encodedPath == ApiPaths.PARENT_RULES) respondJson(snapshotWithRules("Mimi", 10, 30, "[60,60,60,60,60,120,120]"))
+            else respondJson(snapshotWith(0))
+        }
+
+        viewModel.saveRules(" Mimi ", 10, 30)
+        viewModel.state.await { it.child?.name == "Mimi" }
+
+        assertEquals("""{"childId":"k1","name":"Mimi","warningThresholdMinutes":10,"overrunLimitMinutes":30}""", bodyOf(app.requests.last { it.method.value == "POST" }))
+        assertEquals(10, viewModel.state.value.child?.warningThresholdMinutes)
+        assertEquals(30, viewModel.state.value.child?.overrunLimitMinutes)
+    }
+
+    @Test
+    fun `Scheitert das Speichern der Regeln, bleibt der Dialog offen und meldet es`() = runTest {
+        val viewModel = viewModelWith()
+        app.handler = { throw IOException("offline") }
+        var done = false
+
+        viewModel.saveRules("Mia", 10, 30) { done = true }
+        viewModel.state.await { it.actionFailed }
+
+        assertFalse(done)
+        viewModel.clearActionFailed()
+        assertFalse(viewModel.state.value.actionFailed)
+    }
+
     private companion object {
         const val SNAPSHOT_WITH_STATUS =
             """{"serverTimeEpochMillis":1,"devices":[],"children":[{"childId":"k1","name":"Mia","status":{"day":"2026-01-05",""" +
