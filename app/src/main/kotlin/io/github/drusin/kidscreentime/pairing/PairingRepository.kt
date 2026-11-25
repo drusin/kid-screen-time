@@ -21,6 +21,9 @@ import kotlinx.coroutines.flow.asStateFlow
 sealed interface DeviceState {
     data object Unpaired : DeviceState
     data class Paired(val device: PairedDevice) : DeviceState
+
+    /** The server answered `401`: this device was entkoppelt. The screen says "Gerät wurde entkoppelt" until it is acknowledged. */
+    data object Revoked : DeviceState
 }
 
 sealed interface PairResult {
@@ -28,22 +31,22 @@ sealed interface PairResult {
     data object InvalidServerUrl : PairResult
     data object InvalidCode : PairResult
     data object RateLimited : PairResult
-
-    /** `409`: the Kind already has a Kindgerät and replacing it is not possible yet (ticket 12). */
-    data object ChildHasDevice : PairResult
     data object ServerUnreachable : PairResult
     data object UnexpectedError : PairResult
 }
 
 /**
  * Kopplung of this device: redeems a Kopplungscode, keeps the Geräte-Token in the [TokenStore] and the rest in
- * [PairingStorage]. The role never changes afterwards; there is no way back to [DeviceState.Unpaired] except
- * [unpair] (called when the server answers `401`, ticket 12).
+ * [PairingStorage]. The role never changes afterwards; there is no way back except [unpair] and [markRevoked]
+ * (called when the server answers `401` or this Elterngerät entkoppelt itself, ticket 12). Both call [onUnpaired] so
+ * that the push registration at the distributor goes away too.
  */
 class PairingRepository(
     private val httpClient: HttpClient,
     private val tokenStore: TokenStore,
     private val storage: PairingStorage,
+    /** Runs after the Kopplung was forgotten (UnifiedPush unregister, forget the registration). */
+    private val onUnpaired: () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<DeviceState> = _state.asStateFlow()
@@ -80,22 +83,48 @@ class PairingRepository(
             }
             HttpStatusCode.BadRequest -> PairResult.InvalidCode
             HttpStatusCode.TooManyRequests -> PairResult.RateLimited
-            HttpStatusCode.Conflict -> PairResult.ChildHasDevice
             else -> PairResult.UnexpectedError
         }
     }
 
     /** Forgets the Kopplung locally (token and data). */
     fun unpair() {
-        tokenStore.clear()
+        forget()
+        _state.value = DeviceState.Unpaired
+    }
+
+    /**
+     * The server entkoppelt this device (`401`, or the own Elterngerät was unpaired): forgets the Kopplung and shows
+     * [DeviceState.Revoked]. Only a paired device can be revoked, repeated calls change nothing.
+     */
+    fun markRevoked() {
+        if (_state.value !is DeviceState.Paired) return
+        forget()
+        storage.markRevoked()
+        _state.value = DeviceState.Revoked
+    }
+
+    /** The user read "Gerät wurde entkoppelt": back to "Gerät koppeln". */
+    fun acknowledgeRevoked() {
+        if (_state.value != DeviceState.Revoked) return
         storage.clear()
         _state.value = DeviceState.Unpaired
+    }
+
+    private fun forget() {
+        tokenStore.clear()
+        storage.clear()
+        onUnpaired()
     }
 
     private fun initialState(): DeviceState {
         val device = storage.load()
         // Without the token the stored data is useless; start over at "Gerät koppeln".
-        return if (device != null && tokenStore.load() != null) DeviceState.Paired(device) else DeviceState.Unpaired
+        return when {
+            device != null && tokenStore.load() != null -> DeviceState.Paired(device)
+            storage.isRevoked() -> DeviceState.Revoked
+            else -> DeviceState.Unpaired
+        }
     }
 
     companion object {

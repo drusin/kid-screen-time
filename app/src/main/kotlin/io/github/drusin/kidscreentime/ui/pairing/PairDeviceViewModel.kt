@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class PairError { INVALID_SERVER_URL, INVALID_CODE, RATE_LIMITED, SERVER_UNREACHABLE, CHILD_HAS_DEVICE, INVALID_QR, SCANNER_UNAVAILABLE, UNEXPECTED }
+enum class PairError { INVALID_SERVER_URL, INVALID_CODE, RATE_LIMITED, SERVER_UNREACHABLE, INVALID_QR, SCANNER_UNAVAILABLE, UNEXPECTED }
 
 data class PairDeviceUiState(
     val serverUrl: String = "",
@@ -70,7 +70,6 @@ class PairDeviceViewModel(
                         PairResult.InvalidServerUrl -> PairError.INVALID_SERVER_URL
                         PairResult.InvalidCode -> PairError.INVALID_CODE
                         PairResult.RateLimited -> PairError.RATE_LIMITED
-                        PairResult.ChildHasDevice -> PairError.CHILD_HAS_DEVICE
                         PairResult.ServerUnreachable -> PairError.SERVER_UNREACHABLE
                         PairResult.UnexpectedError -> PairError.UNEXPECTED
                     },

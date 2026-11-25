@@ -48,6 +48,10 @@ data class WeeklyTemplateRequest(val childId: String, val minutes: List<Int>)
 @Serializable
 data class RulesRequest(val childId: String, val name: String, val warningThresholdMinutes: Int, val overrunLimitMinutes: Int)
 
+/** Unpairs the Gerät [deviceId] (an entry of the Geräteliste). Afterwards its Geräte-Token answers `401`. */
+@Serializable
+data class UnpairDeviceRequest(val deviceId: String)
+
 /** Complete state for a Elterngerät. Always the full state, never deltas. */
 @Serializable
 data class ParentSnapshot(

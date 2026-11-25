@@ -31,10 +31,13 @@ class PairingRepositoryTest {
     private val requests = mutableListOf<HttpRequestData>()
     private var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson(PARENT_RESPONSE) }
 
+    private var unpaired = 0
+
     private fun repository() = PairingRepository(
         createHttpClient(MockEngine { request -> requests += request; handler(request) }),
         tokenStore,
         PairingStorage(context),
+        onUnpaired = { unpaired++ },
     )
 
     @Test
@@ -123,6 +126,40 @@ class PairingRepositoryTest {
         assertEquals(DeviceState.Unpaired, repository.state.value)
         assertNull(tokenStore.load())
         assertEquals(DeviceState.Unpaired, repository().state.value)
+    }
+
+    @Test
+    fun `Eine Entkopplung durch den Server vergisst Token und Daten und zeigt Gerät wurde entkoppelt, auch nach einem Neustart`() = runTest {
+        val repository = repository()
+        repository.pair("https://kst.example.org", "ABCD-EFGH", "Handy")
+
+        repository.markRevoked()
+
+        assertEquals(DeviceState.Revoked, repository.state.value)
+        assertNull(tokenStore.load())
+        assertEquals(1, unpaired, "Der Push-Verteiler erfährt davon")
+        assertEquals(DeviceState.Revoked, repository().state.value, "Der Hinweis bleibt bis zum Bestätigen")
+
+        repository.acknowledgeRevoked()
+
+        assertEquals(DeviceState.Unpaired, repository.state.value)
+        assertEquals(DeviceState.Unpaired, repository().state.value)
+    }
+
+    @Test
+    fun `Ein ungekoppeltes Gerät wird nicht entkoppelt und ein neues Koppeln löscht den Hinweis`() = runTest {
+        val repository = repository()
+        repository.markRevoked()
+        assertEquals(DeviceState.Unpaired, repository.state.value)
+        assertEquals(0, unpaired)
+
+        repository.pair("https://kst.example.org", "ABCD-EFGH", "Handy")
+        repository.markRevoked()
+        repository.acknowledgeRevoked()
+        repository.pair("https://kst.example.org", "ABCD-EFGH", "Handy")
+        tokenStore.clear()
+
+        assertEquals(DeviceState.Unpaired, repository().state.value, "Kein alter Hinweis nach erneutem Koppeln")
     }
 
     private companion object {

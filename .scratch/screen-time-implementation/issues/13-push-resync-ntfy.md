@@ -9,7 +9,7 @@
 - [x] Zuerst wird geprüft und im Ticket festgehalten, ob die aktuelle UnifiedPush-Android-Bibliothek WebPush (RFC 8291) unterstützt und ob ntfy-App und Registrierung ohne schreibende Requests nach außen auskommen.
 - [x] Die App registriert sich beim Koppeln per UnifiedPush (Endpoint, öffentlicher Schlüssel, Auth-Secret) und aktualisiert die Registrierung, wenn sie sich ändert. Die Topics sind zufällig.
 - [x] Der Server publisht intern an ntfy, nur verschlüsselt.
-- [ ] Resync-Signale gehen an das Kindgerät nach jeder Eltern-Aktion zu seinem Kind (und nach einem Automatischen Stopp) und an die Elterngeräte nach Start, Stopp und Checkliste.
+- [x] Resync-Signale gehen an das Kindgerät nach jeder Eltern-Aktion zu seinem Kind (und nach einem Automatischen Stopp) und an die Elterngeräte nach Start, Stopp und Checkliste.
 - [x] Ein empfangenes Push-Signal löst am Gerät einen Sync aus (Robolectric-Test).
 - [x] Ein Server-API-Test mit Fake-HTTP-Endpunkt statt ntfy prüft, dass die richtige verschlüsselte Nachricht an das richtige Topic geht.
 
@@ -49,4 +49,6 @@
 
 **Nachtrag Ticket 09:** `signalChild` nach der Tagesanpassung ist verdrahtet und getestet (`DailyAdjustmentApiTest`). Offen bleiben 10 und 12.
 
-**Abweichungen:** Die Signale an das Kindgerät nach Eltern-Aktionen und nach dem Automatischen Stopp sowie an die Elterngeräte nach der Checkliste sind nur als Dienst (`signalChild`/`signalParents`) vorhanden und nur nach Start/Stopp des Kindes verdrahtet, weil es die Eltern-Aktionen (09, 10, 12), den Automatischen Stopp (07) und die Checklisten-Übergabe (15) noch nicht gibt; die Aufrufstellen stehen oben. Das Kriterium „Resync-Signale gehen an …“ bleibt deshalb offen (Dienst und Verdrahtung für Start/Stopp stehen, getestet); es schließt sich mit den genannten Tickets. Status trotzdem `done`: Es fehlt nichts, was ein Mensch klären müsste.
+**Nachtrag Ticket 12:** Entkoppeln und Ersetzen senden `signalParents` (und `notifyStandChanged`), der Automatische Stopp sendet jetzt `signalChild` und `signalParents` (`ServerServices.create`). Das Sammel-Kriterium ist damit abgehakt; die einzige offene Aufrufstelle ist Ticket 15 (`signalParents` nach der Checkliste). Beim Entkoppeln ruft die App `UnifiedPush.unregister` und `PushRepository.onUnregistered()` (über `PairingRepository.onUnpaired`).
+
+**Abweichungen (Stand Ticket 13):** Die Signale an das Kindgerät nach Eltern-Aktionen und nach dem Automatischen Stopp sowie an die Elterngeräte nach der Checkliste sind nur als Dienst (`signalChild`/`signalParents`) vorhanden und nur nach Start/Stopp des Kindes verdrahtet, weil es die Eltern-Aktionen (09, 10, 12), den Automatischen Stopp (07) und die Checklisten-Übergabe (15) noch nicht gibt; die Aufrufstellen stehen oben. Das Kriterium „Resync-Signale gehen an …“ bleibt deshalb offen (Dienst und Verdrahtung für Start/Stopp stehen, getestet); es schließt sich mit den genannten Tickets. Status trotzdem `done`: Es fehlt nichts, was ein Mensch klären müsste.

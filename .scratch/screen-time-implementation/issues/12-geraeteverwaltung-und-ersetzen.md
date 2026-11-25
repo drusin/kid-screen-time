@@ -4,13 +4,26 @@
 
 **Blocked by:** 05 Sitzung starten und stoppen
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Die Geräteliste ist Teil des Eltern-Snapshots. „Zuletzt gesehen“ entsteht aus den Syncs.
-- [ ] Das letzte Elterngerät kann nicht entkoppelt werden.
-- [ ] Nach dem Entkoppeln bekommt das Gerät `401` und zeigt „Gerät wurde entkoppelt“.
-- [ ] Am Elterngerät lässt sich ein Kopplungscode für ein weiteres Elterngerät erzeugen (QR, Text, Countdown).
-- [ ] Das Koppeln eines neuen Kindgeräts entkoppelt das alte automatisch. Pro Kind gibt es höchstens ein aktives Kindgerät.
-- [ ] Das alte Kindgerät verwirft bei `401` seine Outbox. Das neue übernimmt die laufende Sitzung über die Sitzungs-UUID im Snapshot.
-- [ ] Server-API-Tests decken ab: letztes Elterngerät, `401` nach Entkoppeln, Ersetzen des Kindgeräts.
-- [ ] Sync-Szenario-Tests prüfen: Ersetztes Kindgerät verwirft die Outbox, das neue Kindgerät übernimmt die Sitzung.
+- [x] Die Geräteliste ist Teil des Eltern-Snapshots. „Zuletzt gesehen“ entsteht aus den Syncs.
+- [x] Das letzte Elterngerät kann nicht entkoppelt werden.
+- [x] Nach dem Entkoppeln bekommt das Gerät `401` und zeigt „Gerät wurde entkoppelt“.
+- [x] Am Elterngerät lässt sich ein Kopplungscode für ein weiteres Elterngerät erzeugen (QR, Text, Countdown).
+- [x] Das Koppeln eines neuen Kindgeräts entkoppelt das alte automatisch. Pro Kind gibt es höchstens ein aktives Kindgerät.
+- [x] Das alte Kindgerät verwirft bei `401` seine Outbox. Das neue übernimmt die laufende Sitzung über die Sitzungs-UUID im Snapshot.
+- [x] Server-API-Tests decken ab: letztes Elterngerät, `401` nach Entkoppeln, Ersetzen des Kindgeräts.
+- [x] Sync-Szenario-Tests prüfen: Ersetztes Kindgerät verwirft die Outbox, das neue Kindgerät übernimmt die Sitzung.
+
+## Notizen zur Umsetzung
+
+- **Endpunkt:** `POST ApiPaths.PARENT_UNPAIR_DEVICE` (`UnpairDeviceRequest(deviceId)`), nur Elterngerät, Antwort ist der neue `ParentSnapshot`. `400` für ein unbekanntes oder schon entkoppeltes Gerät, `409` für das letzte Elterngerät. Danach `notifyStandChanged()` (nur bei Kindgerät) und `signalParents()`. Entkoppeln setzt nur `devices.unpaired_at`; `authenticate`, die Push-Empfängerliste und die Geräteliste filtern darauf. Keine Migration.
+- **Ersetzen:** `PairingService.redeem` entkoppelt ein aktives Kindgerät desselben Kindes in derselben Transaktion (`DeviceService.unpair(c, id, now)`), bevor es das neue anlegt; der Unique-Index „ein aktives Kindgerät pro Kind“ bleibt als Sicherung. Das `409` „Ersetzen noch nicht möglich“ (`RedeemResult.ChildHasDevice`, `PairResult.ChildHasDevice`, String, Fehlertext) ist entfernt. Nach dem Ersetzen: `notifyStandChanged()` und `signalParents()` (nach der Antwort). Ein erstes Koppeln sendet bewusst kein Signal an die Elterngeräte (sonst zählen die Push-Tests mit); die Geräteliste lädt der Elternteil beim Öffnen neu.
+- **Geräteliste:** war mit Ticket 03/04 schon Teil des Eltern-Snapshots (`devices`); „zuletzt gesehen“ setzt `DeviceService.authenticate` bei jedem authentifizierten Aufruf, bei Kindgeräten also bei jedem Sync. Neu: Abschnitt „Geräte“ in `ParentSettingsScreen` (Name, Rolle, Kopplungsdatum, zuletzt gesehen, „Entkoppeln“ mit Bestätigungsdialog; beim letzten Elterngerät statt des Knopfs ein Hinweis, `ParentHomeUiState.canUnpair`). Das Koppeln eines weiteren Elterngeräts (QR, Text, Countdown) ist der vorhandene „Gerät koppeln“-Ablauf (`PairNewDeviceScreen`, Ticket 04) und steht in demselben Abschnitt.
+- **`401` am Gerät:** `DeviceState.Revoked` (neu) und `PairingRepository.markRevoked()/acknowledgeRevoked()`. `markRevoked` vergisst Token und Kopplungsdaten, merkt nur ein Flag in `PairingStorage` (der Hinweis überlebt einen Neustart) und ruft `onUnpaired` (im `AppContainer`: `UnifiedPush.unregister` und `PushRepository.onUnregistered()`). `AppRoot` zeigt `RevokedScreen` („Gerät wurde entkoppelt“, Knopf „Neu koppeln“ → `Unpaired`). `ParentRepository` ruft `markRevoked()` bei jedem `401`; das eigene Gerät zu entkoppeln (`unpairDevice` mit der eigenen ID) beendet die Kopplung nach der Antwort genauso.
+- **Ersetztes Kindgerät:** `ChildRepository.sync` löscht bei `401` Outbox und gespeicherten Snapshot in einer Transaktion (nichts aus der alten Outbox erreicht den Server) und ruft `markRevoked()`. Der leere `local`-Stand lässt `AlarmKern.observe` `replan(null)` rufen: Alarm storniert, `AlarmMemory` geleert, Klingeln beendet (kein eigener Aufruf nötig). Der Alarmkern wartet nicht auf das Ende des Sync: ohne Beobachter (Tests) bleibt der Alarm bis `replan`.
+- **Neues Kindgerät übernimmt die Sitzung:** keine neue Logik nötig. Der Snapshot trägt die Sitzung mit UUID, `ChildRepository.stopSession` kennt eine Sitzung nur aus dem Snapshot (Ticket 05) und der Stopp bringt den Start mit. Die Tests (`DeviceManagementScenarioTest`) weisen es mit dem echten `ChildHomeViewModel` nach (Knopf „Stopp“, Server beendet die Sitzung). Eine nur in der alten Outbox liegende, nie synchronisierte Sitzung geht verloren; das ist das Protokoll („verwirft die Outbox“).
+- **Das alte Kindgerät erfährt vom Ersetzen erst mit seinem nächsten Sync** (Entsperren, App-Start, Wiederholung): Der Server sendet einem entkoppelten Gerät kein Push-Signal mehr (ein Push-Test belegt das).
+- **Ticket 13:** Beim Verdrahten fiel auf, dass der Automatische Stopp noch kein Signal sendete. `ServerServices.create` hängt jetzt `signalChild` und `signalParents` an `automaticStops.onStopped` (Test in `DeviceManagementApiTest`). Damit ist das Sammel-Kriterium in Ticket 13 abgehakt; Ticket 15 ergänzt `signalParents` nach der Checkliste, Ticket 14 kann das Signal an die Elterngeräte mit Text versehen.
+- **Tests:** `DeviceManagementApiTest` (Server: Geräteliste mit „zuletzt gesehen“, letztes Elterngerät, `401` nach Entkoppeln, Rollen/Token/`400`, Ersetzen, höchstens ein aktives Kindgerät, laufende Sitzung im neuen Snapshot, Push-Empfänger, Signal nach Automatischem Stopp), `DeviceManagementScenarioTest` (App gegen Server: Outbox verworfen, Sitzung übernommen und gestoppt, Alarm storniert, Elterngerät entkoppelt Tablet, letztes Elterngerät, eigenes Gerät), `PairingRepositoryTest`, `ParentHomeViewModelTest` (Erweiterungen).
+- **Manuell zu prüfen:** Aussehen von Geräteliste, Bestätigungsdialog und „Gerät wurde entkoppelt“ am Gerät; dass `UnifiedPush.unregister` am echten Gerät den Verteiler-Eintrag entfernt (Robolectric ruft nur den Zähler).

@@ -33,6 +33,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import org.unifiedpush.android.connector.UnifiedPush
 
 /**
  * Manual dependency injection (no Hilt): the one place that wires the app. Created once by [KidScreenTimeApp], which also starts [AlarmKern.observe].
@@ -55,12 +56,18 @@ class AppContainer(
     val testSession: TestSession = createTestSession(context, wallClock),
     /** Repeats a failed sync (WorkManager). Tests record instead. */
     val syncRetry: SyncRetry = WorkManagerSyncRetry(context),
+    /** Tells the push distributor that this app no longer wants messages (after the Kopplung ended). Tests do nothing. */
+    unregisterPush: () -> Unit = { UnifiedPush.unregister(context) },
 ) {
     val httpClient = createHttpClient(engine)
-    val pairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context))
+    val pairingRepository: PairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context), onUnpaired = {
+        // An entkoppeltes Gerät gets no push signals any more (the server stopped them); the distributor and our records follow.
+        unregisterPush()
+        pushRepository.onUnregistered()
+    })
     val parentRepository = ParentRepository(httpClient, pairingRepository)
     val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry)
-    val pushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
+    val pushRepository: PushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
     val pushHandler = PushHandler(pairingRepository, childRepository)
 
     /** For work that outlives a screen, e.g. what a push message triggers. Lives as long as the process. */

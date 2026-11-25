@@ -127,18 +127,4 @@ class PairDeviceViewModelTest {
         viewModel.onServerUrlChange("kst.example.org")
         assertNull(viewModel.state.value.error)
     }
-
-    @Test
-    fun `Hat das Kind schon ein Kindgerät, meldet die Kopplung den Konflikt`() = runTest {
-        app.handler = { respond("", HttpStatusCode.Conflict) }
-        val viewModel = viewModel()
-        viewModel.onServerUrlChange("kst.example.org")
-        viewModel.onCodeChange("ABCD-EFGH")
-
-        viewModel.submit()
-        viewModel.state.await { !it.submitting }
-
-        assertEquals(PairError.CHILD_HAS_DEVICE, viewModel.state.value.error)
-        assertEquals(DeviceState.Unpaired, app.container.pairingRepository.state.value)
-    }
 }

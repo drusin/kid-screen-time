@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,9 +33,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.drusin.kidscreentime.R
+import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.ui.minutesText
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -106,8 +113,8 @@ fun WeeklyTemplateScreen(viewModel: ParentHomeViewModel, onClose: () -> Unit) {
 }
 
 /**
- * "Einstellungen & Geräte" (the ⋮ menu): the rules of the Kind and the way to pair a device. Ticket 12 adds the Geräteliste
- * to the "Geräte" section (below the pairing button).
+ * "Einstellungen & Geräte" (the ⋮ menu): the rules of the Kind and the "Geräte" section with the Geräteliste (unpair) and
+ * the way to pair a further device.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,8 +135,70 @@ fun ParentSettingsScreen(viewModel: ParentHomeViewModel, onPairDevice: () -> Uni
         Column(modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (child != null) RulesSection(child, state.acting, state.actionFailed, viewModel)
             Text(stringResource(R.string.settings_devices), style = MaterialTheme.typography.titleLarge)
+            DevicesSection(state, viewModel)
             Button(onClick = onPairDevice) { Text(stringResource(R.string.pair_device_title)) }
         }
+    }
+}
+
+/** The Geräteliste: name, role, Kopplungsdatum, "zuletzt gesehen" and "Entkoppeln" (not for the last Elterngerät). */
+@Composable
+private fun DevicesSection(state: ParentHomeUiState, viewModel: ParentHomeViewModel) {
+    var confirming by rememberSaveable { mutableStateOf<String?>(null) }
+    val zone = remember(state.timeZone) { state.timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneOffset.UTC }
+    val dateFormat = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMANY) }
+    val dateTimeFormat = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm", Locale.GERMANY) }
+    state.devices.forEach { device ->
+        val own = device.id == state.ownDeviceId
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    device.name + if (own) " " + stringResource(R.string.devices_this_device) else "",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    stringResource(if (device.role == DeviceRole.PARENT) R.string.devices_role_parent else R.string.devices_role_child),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    stringResource(R.string.devices_paired_at, dateFormat.format(Instant.ofEpochMilli(device.pairedAtEpochMillis).atZone(zone))),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    device.lastSeenEpochMillis?.let { stringResource(R.string.devices_last_seen, dateTimeFormat.format(Instant.ofEpochMilli(it).atZone(zone))) }
+                        ?: stringResource(R.string.devices_never_seen),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.canUnpair(device)) {
+                    OutlinedButton(onClick = { confirming = device.id }) { Text(stringResource(R.string.devices_unpair)) }
+                } else if (device.role == DeviceRole.PARENT && !state.acting) {
+                    Text(stringResource(R.string.devices_last_parent_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    if (state.actionFailed) Text(stringResource(R.string.parent_adjust_failed), color = MaterialTheme.colorScheme.error)
+    val target = state.devices.firstOrNull { it.id == confirming }
+    if (target != null) {
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text(stringResource(R.string.devices_unpair_confirm_title, target.name)) },
+            text = {
+                Text(
+                    stringResource(
+                        when {
+                            target.id == state.ownDeviceId -> R.string.devices_unpair_confirm_own
+                            target.role == DeviceRole.CHILD -> R.string.devices_unpair_confirm_child
+                            else -> R.string.devices_unpair_confirm_other
+                        },
+                    ),
+                )
+            },
+            confirmButton = { TextButton(onClick = { confirming = null; viewModel.unpairDevice(target.id) }) { Text(stringResource(R.string.devices_unpair)) } },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text(stringResource(R.string.devices_cancel)) } },
+        )
     }
 }
 

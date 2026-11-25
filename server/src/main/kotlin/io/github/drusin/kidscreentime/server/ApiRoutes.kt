@@ -10,6 +10,7 @@ import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.api.RulesRequest
 import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.UnpairDeviceRequest
 import io.github.drusin.kidscreentime.api.WeeklyTemplateRequest
 import io.github.drusin.kidscreentime.api.PushRegistration
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeRequest
@@ -78,9 +79,14 @@ fun Route.apiRoutes(services: ServerServices) {
             }
         }
         when (val result = services.pairing.redeem(request.code, request.deviceName.trim(), request.push)) {
-            is RedeemResult.Paired -> call.respond(result.response)
-            RedeemResult.ChildHasDevice ->
-                call.respond(HttpStatusCode.Conflict, ErrorResponse("Das Kind hat schon ein Kindgerät. Das Ersetzen ist noch nicht möglich."))
+            is RedeemResult.Paired -> {
+                call.respond(result.response)
+                // After the answer: a replaced Kindgerät changes the Geräteliste of the Elterngeräte (a first pairing signals nobody).
+                if (result.replacedChildDevice) {
+                    services.children.notifyStandChanged()
+                    services.push.signalParents()
+                }
+            }
             RedeemResult.InvalidCode -> {
                 services.rateLimiter.recordFailure()
                 call.respond(HttpStatusCode.BadRequest, ErrorResponse("Kopplungscode ungültig oder abgelaufen"))
@@ -165,6 +171,21 @@ fun Route.apiRoutes(services: ServerServices) {
                 services.push.signalChild(request.childId)
             }
             ChildService.ChangeResult.UnknownChild -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Kind ist unbekannt"))
+        }
+    }
+
+    authenticatedPost(ApiPaths.PARENT_UNPAIR_DEVICE, services, DeviceRole.PARENT) {
+        val request = call.receive<UnpairDeviceRequest>()
+        when (val result = services.devices.unpair(request.deviceId)) {
+            UnpairResult.UnknownDevice -> call.respond(HttpStatusCode.BadRequest, ErrorResponse("Das Gerät ist unbekannt oder schon entkoppelt"))
+            UnpairResult.LastParentDevice ->
+                call.respond(HttpStatusCode.Conflict, ErrorResponse("Das letzte Elterngerät kann nicht entkoppelt werden"))
+            is UnpairResult.Unpaired -> {
+                call.respond(parentSnapshot(services))
+                // The Kind's stand does not change, but the scheduler re-reads who is paired. The Elterngeräte see the new Geräteliste.
+                if (result.device.role == DeviceRole.CHILD) services.children.notifyStandChanged()
+                services.push.signalParents()
+            }
         }
     }
 

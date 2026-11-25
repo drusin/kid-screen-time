@@ -30,8 +30,16 @@ class PairingStorage(private val prefs: SharedPreferences) {
         )
     }
 
+    /** The server entkoppelt this device: the Kopplung is gone, only the hint "Gerät wurde entkoppelt" stays until it is acknowledged. */
+    fun markRevoked() {
+        prefs.edit().clear().putBoolean("revoked", true).apply()
+    }
+
+    fun isRevoked(): Boolean = prefs.getBoolean("revoked", false)
+
     fun save(device: PairedDevice) {
         prefs.edit()
+            .remove("revoked")
             .putString("serverUrl", device.serverUrl)
             .putString("deviceId", device.deviceId)
             .putString("deviceName", device.deviceName)

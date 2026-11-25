@@ -13,6 +13,7 @@ import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.pairing.DeviceState
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceScreen
 import io.github.drusin.kidscreentime.ui.pairing.PairDeviceViewModel
+import io.github.drusin.kidscreentime.ui.pairing.RevokedScreen
 import io.github.drusin.kidscreentime.ui.child.ChildHomeScreen
 import io.github.drusin.kidscreentime.ui.child.ChildHomeViewModel
 import io.github.drusin.kidscreentime.ui.parent.ParentRoot
@@ -31,6 +32,7 @@ fun AppRoot(container: AppContainer) {
             }),
             scanner = container.qrScannerFactory(LocalContext.current),
         )
+        DeviceState.Revoked -> RevokedScreen(onAcknowledge = container.pairingRepository::acknowledgeRevoked)
         is DeviceState.Paired -> when (state.device.role) {
             DeviceRole.PARENT -> ParentRoot(container)
             DeviceRole.CHILD -> ChildHomeScreen(

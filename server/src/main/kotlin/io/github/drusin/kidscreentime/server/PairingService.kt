@@ -13,16 +13,11 @@ import java.util.UUID
 data class CreatedPairingCode(val code: String, val expiresAtEpochMillis: Long)
 
 sealed interface RedeemResult {
-    data class Paired(val response: RedeemPairingCodeResponse) : RedeemResult
+    /** [replacedChildDevice]: a new Kindgerät took the place of the old one (entkoppelt in the same transaction). */
+    data class Paired(val response: RedeemPairingCodeResponse, val replacedChildDevice: Boolean = false) : RedeemResult
 
     /** Unknown, expired or already used. The three cases are deliberately indistinguishable. */
     data object InvalidCode : RedeemResult
-
-    /**
-     * The Kind already has an active Kindgerät. The code stays unused. Replacing the old Kindgerät comes with
-     * ticket 12; until then the unique index "one active Kindgerät per Kind" is enforced with this answer.
-     */
-    data object ChildHasDevice : RedeemResult
 }
 
 /** Creating and redeeming Kopplungscodes (einmalig, 10 minutes valid, stored only as hash). */
@@ -78,10 +73,6 @@ class PairingService(
                 }
             } ?: return@transaction RedeemResult.InvalidCode
 
-            if (found.childId != null && children.activeChildDeviceName(c, found.childId) != null) {
-                return@transaction RedeemResult.ChildHasDevice
-            }
-
             c.prepareStatement("UPDATE pairing_codes SET redeemed_at = ? WHERE id = ?").use {
                 it.setLong(1, now)
                 it.setString(2, found.id)
@@ -97,6 +88,20 @@ class PairingService(
                 childName = c.prepareStatement("SELECT name FROM children WHERE id = ?").use { st ->
                     st.setString(1, childId)
                     st.executeQuery().use { rs -> rs.next(); rs.getString(1) }
+                }
+            }
+
+            // A new Kindgerät replaces the old one: it is entkoppelt in this transaction, so the unique index
+            // "one active Kindgerät per Kind" holds and the old token answers `401` from now on.
+            var replaced = false
+            if (found.role == DeviceRole.CHILD && childId != null) {
+                val old = c.prepareStatement("SELECT id FROM devices WHERE child_id = ? AND role = 'CHILD' AND unpaired_at IS NULL").use { st ->
+                    st.setString(1, childId)
+                    st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+                }
+                if (old != null) {
+                    DeviceService.unpair(c, old, now)
+                    replaced = true
                 }
             }
 
@@ -117,7 +122,7 @@ class PairingService(
                 it.setString(9, push?.authSecret)
                 it.executeUpdate()
             }
-            RedeemResult.Paired(RedeemPairingCodeResponse(deviceId, token, found.role, childId, childName))
+            RedeemResult.Paired(RedeemPairingCodeResponse(deviceId, token, found.role, childId, childName), replaced)
         }
     }
 

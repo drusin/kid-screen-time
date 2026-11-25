@@ -44,7 +44,10 @@ data class ChildLocalState(val stored: StoredChildSnapshot, val pending: List<Pe
 sealed interface ChildSyncResult {
     data object Synced : ChildSyncResult
 
-    /** `401`: this device was entkoppelt or its token is invalid (ticket 12 shows "Gerät wurde entkoppelt"). The Outbox stays. */
+    /**
+     * `401`: this device was entkoppelt (or replaced by a new Kindgerät) or its token is invalid. The Outbox and the stored
+     * snapshot are discarded, the screen shows "Gerät wurde entkoppelt" and the Alarmkern cancels its alarms.
+     */
     data object Unauthorized : ChildSyncResult
 
     /** No network or no usable answer. The device keeps calculating with the stored snapshot and its Outbox. */
@@ -169,7 +172,7 @@ class ChildRepository(
                     }
                     ChildSyncResult.Synced
                 }
-                HttpStatusCode.Unauthorized -> ChildSyncResult.Unauthorized
+                HttpStatusCode.Unauthorized -> revoked()
                 else -> unavailable()
             }
         } catch (e: CancellationException) {
@@ -177,6 +180,21 @@ class ChildRepository(
         } catch (_: Exception) {
             unavailable()
         }
+    }
+
+    /**
+     * The server entkoppelt this device. What it still has in the Outbox must not reach the server, and the snapshot is
+     * no longer its stand: both are deleted in one transaction. That makes [local] empty, which the Alarmkern answers
+     * with `replan(null)` (alarms cancelled, `AlarmMemory` cleared, a ringing Alarm ends). The new Kindgerät takes over
+     * a running Sitzung through its UUID in the snapshot.
+     */
+    private suspend fun revoked(): ChildSyncResult {
+        database.withTransaction {
+            outboxDao.clear()
+            snapshotDao.clear()
+        }
+        pairing.markRevoked()
+        return ChildSyncResult.Unauthorized
     }
 
     /** No usable answer: the Outbox stays and the WorkManager job tries again as soon as there is a network. */

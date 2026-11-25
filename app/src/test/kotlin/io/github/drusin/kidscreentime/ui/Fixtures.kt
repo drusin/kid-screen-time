@@ -39,6 +39,10 @@ class TestContainer(
     /** Replaces the WorkManager repetition of a failed sync; the default only counts the requests for one. */
     syncRetry: SyncRetry? = null,
 ) {
+    /** How often the Kopplung ended and the app told the push distributor (UnifiedPush unregister), ticket 12. */
+    var pushUnregistrations = 0
+        private set
+
     /** How often a failed sync asked for the WorkManager repetition (when no [syncRetry] was given). */
     var retriesScheduled = 0
         private set
@@ -58,6 +62,7 @@ class TestContainer(
         database = database,
         alarmEffects = alarmEffects,
         syncRetry = syncRetry ?: SyncRetry { retriesScheduled++ },
+        unregisterPush = { pushUnregistrations++ },
     )
 }
 

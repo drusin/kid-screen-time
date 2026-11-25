@@ -2,6 +2,8 @@ package io.github.drusin.kidscreentime.ui.parent
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.drusin.kidscreentime.api.DeviceInfo
+import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.api.ParentSnapshot
 import io.github.drusin.kidscreentime.parent.ParentActionResult
@@ -18,6 +20,10 @@ import kotlinx.coroutines.launch
 data class ParentHomeUiState(
     val loading: Boolean = true,
     val children: List<ParentChildSnapshot> = emptyList(),
+    /** The Geräteliste of the Eltern-Snapshot (Einstellungen & Geräte). */
+    val devices: List<DeviceInfo> = emptyList(),
+    /** The id of this device in [devices]. */
+    val ownDeviceId: String? = null,
     /** Familien-Zeitzone (IANA id) from the snapshot, for times on the Status-Karte. */
     val timeZone: String? = null,
     /** The Eltern-Snapshot could not be loaded. The ticket 17 cache will show the last known state instead. */
@@ -43,6 +49,9 @@ data class ParentHomeUiState(
 
     /** The delta "Letzte zurücknehmen" would take back, null when there is none (the button is hidden). */
     val undoableAdjustmentMinutes: Int? get() = child?.lastAdjustmentMinutes
+
+    /** Only the last Elterngerät cannot be entkoppelt (the server refuses it, the button is disabled). */
+    fun canUnpair(device: DeviceInfo): Boolean = !acting && (device.role != DeviceRole.PARENT || devices.count { it.role == DeviceRole.PARENT } > 1)
 
     /** Hinweis "noch kein Kind gekoppelt". */
     val showNoChildHint: Boolean get() = children.isEmpty()
@@ -102,6 +111,14 @@ class ParentHomeViewModel(
         runAction(onDone) { repository.setRules(child.childId, name.trim(), warningThresholdMinutes, overrunLimitMinutes) }
     }
 
+    /** Unpairs the Gerät [deviceId] of the Geräteliste (also this device, never the last Elterngerät). */
+    fun unpairDevice(deviceId: String) {
+        val current = _state.value
+        val device = current.devices.firstOrNull { it.id == deviceId } ?: return
+        if (!current.canUnpair(device)) return
+        runAction { repository.unpairDevice(deviceId) }
+    }
+
     /** Clears the failure message (a dialog was opened or its input changed). */
     fun clearActionFailed() {
         _state.update { it.copy(actionFailed = false) }
@@ -130,7 +147,7 @@ class ParentHomeViewModel(
     }
 
     private fun applySnapshot(state: ParentHomeUiState, snapshot: ParentSnapshot) =
-        state.copy(loading = false, unavailable = false, children = snapshot.children, timeZone = snapshot.timeZone)
+        state.copy(loading = false, unavailable = false, children = snapshot.children, timeZone = snapshot.timeZone, devices = snapshot.devices, ownDeviceId = repository.ownDeviceId)
 
     fun refresh() {
         _state.update { it.copy(loading = true) }

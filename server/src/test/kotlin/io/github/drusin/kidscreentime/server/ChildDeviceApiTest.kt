@@ -287,21 +287,6 @@ class ChildDeviceApiTest {
     }
 
     @Test
-    fun `Solange das Ersetzen fehlt, lehnt das Einlösen für ein Kind mit Kindgerät ab und der Code bleibt gültig`() = testApplication {
-        val server = TestServer(dir).also { it.install(this) }
-        val client = server.client(this)
-        val parent = server.pairDevice(client, DeviceRole.PARENT)
-        val child = server.pairChildDevice(client, parent)
-        val created = client.createCode(parent, CreatePairingCodeRequest(DeviceRole.CHILD, childId = child.childId))
-            .body<CreatePairingCodeResponse>()
-
-        assertEquals(HttpStatusCode.Conflict, client.redeem(created.code, "Zweites Tablet").status)
-
-        assertEquals(HttpStatusCode.OK, client.syncAs(child.deviceToken).status)
-        assertEquals(2, client.parentSnapshot(parent).devices.size)
-    }
-
-    @Test
     fun `Ungültige Wünsche für einen Kopplungscode antworten mit 400`() = testApplication {
         val server = TestServer(dir).also { it.install(this) }
         val client = server.client(this)

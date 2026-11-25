@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -73,13 +74,14 @@ class ParentHomeViewModelTest {
     }
 
     @Test
-    fun `Eine Antwort 401 gilt als nicht verfügbar, bis Ticket 12 das Entkoppeln anzeigt`() = runTest {
+    fun `Eine Antwort 401 entkoppelt das Gerät in der App und die Startseite meldet es als nicht verfügbar`() = runTest {
         app.handler = { respond("", HttpStatusCode.Unauthorized) }
 
         val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
         viewModel.state.await { !it.loading }
 
         assertTrue(viewModel.state.value.unavailable)
+        assertEquals(io.github.drusin.kidscreentime.pairing.DeviceState.Revoked, app.container.pairingRepository.state.value)
     }
 
     @Test
@@ -278,6 +280,69 @@ class ParentHomeViewModelTest {
         assertFalse(done)
         viewModel.clearActionFailed()
         assertFalse(viewModel.state.value.actionFailed)
+    }
+
+    private fun devicesSnapshot(vararg devices: String) =
+        """{"serverTimeEpochMillis":1,"devices":[${devices.joinToString(",")}],"children":[]}"""
+
+    private fun device(id: String, role: String, name: String = id) =
+        """{"id":"$id","name":"$name","role":"$role","pairedAtEpochMillis":1}"""
+
+    @Test
+    fun `Die Geräteliste kommt aus dem Eltern-Snapshot, das letzte Elterngerät hat keinen Entkoppeln-Knopf`() = runTest {
+        app.handler = { respondJson(devicesSnapshot(device("d1", "PARENT"), device("k1", "CHILD"))) }
+
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
+        val state = viewModel.state.await { !it.loading }
+
+        assertEquals(listOf("d1", "k1"), state.devices.map { it.id })
+        assertEquals("d1", state.ownDeviceId)
+        assertFalse(state.canUnpair(state.devices.single { it.id == "d1" }), "letztes Elterngerät")
+        assertTrue(state.canUnpair(state.devices.single { it.id == "k1" }), "ein Kindgerät geht immer")
+    }
+
+    @Test
+    fun `Mit zwei Elterngeräten lässt sich jedes entkoppeln, auch das eigene, und die Antwort ist die neue Liste`() = runTest {
+        app.handler = { respondJson(devicesSnapshot(device("d1", "PARENT"), device("d2", "PARENT"))) }
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
+        viewModel.state.await { !it.loading }
+        assertTrue(viewModel.state.value.devices.all { viewModel.state.value.canUnpair(it) })
+        app.handler = { request ->
+            if (request.url.encodedPath == ApiPaths.PARENT_UNPAIR_DEVICE) respondJson(devicesSnapshot(device("d1", "PARENT")))
+            else respondJson(devicesSnapshot(device("d1", "PARENT"), device("d2", "PARENT")))
+        }
+
+        viewModel.unpairDevice("d2")
+        viewModel.state.await { it.devices.size == 1 }
+
+        assertEquals("""{"deviceId":"d2"}""", bodyOf(app.requests.last { it.method.value == "POST" }))
+        assertFalse(viewModel.state.value.actionFailed)
+        assertIs<io.github.drusin.kidscreentime.pairing.DeviceState.Paired>(app.container.pairingRepository.state.value)
+    }
+
+    @Test
+    fun `Ein Entkoppeln des letzten Elterngeräts wird gar nicht erst geschickt`() = runTest {
+        app.handler = { respondJson(devicesSnapshot(device("d1", "PARENT"))) }
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
+        viewModel.state.await { !it.loading }
+        app.requests.clear()
+
+        viewModel.unpairDevice("d1")
+
+        assertTrue(app.requests.none { it.url.encodedPath == ApiPaths.PARENT_UNPAIR_DEVICE })
+    }
+
+    @Test
+    fun `Das eigene Gerät zu entkoppeln beendet die Kopplung dieser App`() = runTest {
+        app.handler = { respondJson(devicesSnapshot(device("d1", "PARENT"), device("d2", "PARENT"))) }
+        val viewModel = main.track(ParentHomeViewModel(app.container.parentRepository))
+        viewModel.state.await { !it.loading }
+        app.handler = { respondJson(devicesSnapshot(device("d2", "PARENT"))) }
+
+        viewModel.unpairDevice("d1")
+        viewModel.state.await { !it.acting && it.devices.size == 1 }
+
+        assertEquals(io.github.drusin.kidscreentime.pairing.DeviceState.Revoked, app.container.pairingRepository.state.value)
     }
 
     private companion object {

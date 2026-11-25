@@ -86,7 +86,6 @@ private fun PairError.messageRes(): Int = when (this) {
     PairError.INVALID_CODE -> R.string.pair_error_invalid_code
     PairError.RATE_LIMITED -> R.string.pair_error_rate_limited
     PairError.SERVER_UNREACHABLE -> R.string.pair_error_server_unreachable
-    PairError.CHILD_HAS_DEVICE -> R.string.pair_error_child_has_device
     PairError.INVALID_QR -> R.string.pair_error_invalid_qr
     PairError.SCANNER_UNAVAILABLE -> R.string.pair_error_scanner_unavailable
     PairError.UNEXPECTED -> R.string.pair_error_unexpected

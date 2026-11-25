@@ -34,6 +34,12 @@ object ApiPaths {
     /** Elterngerät: set the rules of a Kind, Vorwarnschwelle, Überziehungsgrenze and name (POST [RulesRequest]). Answers like every Eltern-Aktion. */
     const val PARENT_RULES = "/api/v1/parent/rules"
 
+    /**
+     * Elterngerät: unpair a Gerät of the Geräteliste, also the own one (POST [UnpairDeviceRequest]). Answers with the new
+     * [ParentSnapshot]; `400` for an unknown or already entkoppeltes Gerät, `409` for the last Elterngerät (it stays).
+     */
+    const val PARENT_UNPAIR_DEVICE = "/api/v1/parent/devices/unpair"
+
     /** Kindgerät: sync (POST). Sends the Outbox ([ChildSyncRequest]) and returns the complete [ChildSnapshot]. */
     const val CHILD_SYNC = "/api/v1/child/sync"
 
