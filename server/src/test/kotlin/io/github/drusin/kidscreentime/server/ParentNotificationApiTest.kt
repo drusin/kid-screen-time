@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.api.PushRegistration
 import io.github.drusin.kidscreentime.api.PushSignal
 import io.github.drusin.kidscreentime.api.RedeemPairingCodeResponse
+import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.api.SessionUpdate
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
@@ -146,6 +147,71 @@ class ParentNotificationApiTest {
             server.texts(parent),
         )
         assertEquals(3, ntfy.requests.size, "Start des Kindes plus ein Push je Ereignis: der mit Text löst den Abgleich schon aus")
+    }
+
+    @Test
+    fun `Meldet das Tablet den Automatischen Stopp vor dem Lauf des Servers, kommt genau eine Benachrichtigung`() = testApplication {
+        val server = TestServer().also { it.install(this) }
+        val client = server.client(this)
+        val parent = server.pairParent(client, "upELTERN0001")
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = client.startSession(child)
+        server.services.push.flush()
+        val before = ntfy.requests.size
+
+        // Das Tablet stoppt um 11:00 offline, sein Sync kommt 30 s später, vor dem Planer.
+        server.clock.advance(Duration.ofMinutes(120) + Duration.ofSeconds(30))
+        client.sync(child, SessionUpdate(id, startAgeMillis = Duration.ofMinutes(120).toMillis() + 30_000, endAgeMillis = 30_000, endReason = SessionEndReason.AUTOMATIC_STOP))
+        client.sync(child, SessionUpdate(id, startAgeMillis = Duration.ofMinutes(120).toMillis() + 30_000, endAgeMillis = 30_000, endReason = SessionEndReason.AUTOMATIC_STOP))
+        server.services.scheduler.runDue()
+        server.services.scheduler.runDue()
+
+        assertEquals(listOf("Mia: Automatischer Stopp nach 60 min Überziehung"), server.texts(parent))
+        assertEquals(1, ntfy.requests.size - before, "Ein einziger Push, mit Text an das Elterngerät (es hat sich nur das Elterngerät registriert; der Text löst den Abgleich schon aus)")
+    }
+
+    @Test
+    fun `Stoppen Tablet und Server fast gleichzeitig, kommt die Benachrichtigung nicht doppelt`() = testApplication {
+        val server = TestServer().also { it.install(this) }
+        val client = server.client(this)
+        val parent = server.pairParent(client, "upELTERN0001")
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = client.startSession(child)
+
+        server.clock.advance(Duration.ofMinutes(121))
+        server.services.scheduler.runDue() // Der Server stoppt zuerst und meldet.
+        // Das Tablet kam 5 s früher zur Grenze (klar früheres Ende, Grund wird „Automatischer Stopp“ vom Tablet) und meldet es spät.
+        client.sync(child, SessionUpdate(id, startAgeMillis = Duration.ofMinutes(121).toMillis(), endAgeMillis = Duration.ofMinutes(1).toMillis() + 5_000, endReason = SessionEndReason.AUTOMATIC_STOP))
+
+        assertEquals(listOf("Mia: Automatischer Stopp nach 60 min Überziehung"), server.texts(parent))
+    }
+
+    @Test
+    fun `Ein Automatischer Stopp, der erst lange danach per Offline-Sync bekannt wird, benachrichtigt nicht nachträglich`() = testApplication {
+        val server = TestServer().also { it.install(this) }
+        val client = server.client(this)
+        val parent = server.pairParent(client, "upELTERN0001")
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+        val id = client.startSession(child)
+
+        server.clock.advance(Duration.ofMinutes(150)) // Das Tablet war 30 min offline, der Server-Planer lief nicht.
+        client.sync(child, SessionUpdate(id, startAgeMillis = Duration.ofMinutes(150).toMillis(), endAgeMillis = Duration.ofMinutes(30).toMillis(), endReason = SessionEndReason.AUTOMATIC_STOP))
+        server.services.scheduler.runDue()
+
+        assertEquals(emptyList(), server.texts(parent))
+    }
+
+    @Test
+    fun `Eine offline gestartete und automatisch gestoppte Sitzung, die der Server nie laufen sah, benachrichtigt nicht`() = testApplication {
+        val server = TestServer().also { it.install(this) }
+        val client = server.client(this)
+        val parent = server.pairParent(client, "upELTERN0001")
+        val child = server.pairDevice(client, DeviceRole.CHILD)
+
+        val id = UUID.randomUUID().toString()
+        client.sync(child, SessionUpdate(id, startAgeMillis = Duration.ofMinutes(125).toMillis(), endAgeMillis = 5_000, endReason = SessionEndReason.AUTOMATIC_STOP))
+
+        assertEquals(emptyList(), server.texts(parent))
     }
 
     @Test

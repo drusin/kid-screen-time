@@ -15,6 +15,7 @@ import io.github.drusin.kidscreentime.child.ChildSyncResult
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -39,6 +40,10 @@ class SyncRetryTest {
         val config = Configuration.Builder().setExecutor(SynchronousExecutor()).setTaskExecutor(SynchronousExecutor()).build()
         WorkManagerTestInitHelper.initializeTestWorkManager(context, config)
     }
+
+    /** The test WorkManager keeps its own in-memory Room database; nothing else closes it (a leaked `SQLiteDatabase` otherwise). */
+    @After
+    fun closeWorkManager() = WorkManagerTestInitHelper.closeWorkDatabase()
 
     private fun workInfos() = WorkManager.getInstance(context).getWorkInfosForUniqueWork(WorkManagerSyncRetry.WORK_NAME).get()
 

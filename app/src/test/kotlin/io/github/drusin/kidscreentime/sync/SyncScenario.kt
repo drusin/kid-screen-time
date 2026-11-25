@@ -121,7 +121,7 @@ class SyncScenario(
      */
     internal suspend fun shutDown() {
         observers.forEach { it.cancelAndJoin() }
-        allDevices.forEach { runCatching { it.app.database.close() } }
+        allDevices.forEach { it.app.close() }
     }
 
     /** The Kindgerät most recently created by [device] / [pairChildDevice]. */

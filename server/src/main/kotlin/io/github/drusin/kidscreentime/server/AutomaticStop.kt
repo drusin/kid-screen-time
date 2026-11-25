@@ -34,9 +34,19 @@ class AutomaticStopEvents(private val children: ChildService) : TimedEventSource
 
     override fun nextDue(childId: String, now: Instant): Instant? = children.nextAutomaticStop(childId, now)
 
-    override fun runDue(childId: String, now: Instant) {
-        val stop = children.stopAutomatically(childId, now) ?: return
+    /**
+     * The Kindgerät stopped at the Überziehungsgrenze itself and its sync came before the server's run (committed in
+     * [ChildService.sync], which also set the "gemeldet" Vermerk): same hooks as for the server's own stop.
+     */
+    fun reportedByDevice(stop: AutomaticStop) = notify(stop)
+
+    private fun notify(stop: AutomaticStop) {
         // One failing listener must not keep the others from running (the end is committed already).
         listeners.forEach { runCatching { it.automaticallyStopped(stop) } }
+    }
+
+    override fun runDue(childId: String, now: Instant) {
+        val stop = children.stopAutomatically(childId, now) ?: return
+        notify(stop)
     }
 }

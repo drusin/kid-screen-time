@@ -37,7 +37,11 @@ class MainDispatcherRule : TestWatcher() {
     /** Call before closing what the ViewModels use (the Room database). */
     fun cancelViewModels() = runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() } }
 
-    override fun finished(description: Description) = cancelViewModels()
+    /** The end of the test: ViewModels first, then every `TestContainer` (its scope and its Room database), never the other way round. */
+    override fun finished(description: Description) {
+        cancelViewModels()
+        io.github.drusin.kidscreentime.ui.OpenTestContainers.closeAll()
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

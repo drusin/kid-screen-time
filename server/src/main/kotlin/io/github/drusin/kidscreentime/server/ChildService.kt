@@ -122,6 +122,7 @@ class ChildService(
             it.executeUpdate()
         }
         if (changed == 1) {
+            markAutomaticStop(c, session.id, now)
             AutomaticStop(childId, session.id, stop, loaded.name, stand.ueberziehungsgrenze)
         } else {
             null
@@ -215,16 +216,21 @@ class ChildService(
         val result = try {
             database.transaction { c ->
                 var changed = false
+                val stoppedSessions = mutableListOf<Pair<String, Instant>>()
                 val setup = if (deviceId != null && missingSetupItems != null) reportSetup(c, deviceId, missingSetupItems) else null
                 for (update in updates.sortedBy { -it.startAgeMillis }) {
-                    when (upsert(c, childId, update, now)) {
+                    when (upsert(c, childId, update, now, stoppedSessions)) {
                         Upsert.FOREIGN -> throw ForeignSessionException()
                         Upsert.CHANGED -> changed = true
                         Upsert.UNCHANGED -> Unit
                     }
                 }
                 val snapshot = checkNotNull(snapshot(c, childId, now)) { "Das Kind des Kindgeräts fehlt" }
-                SyncResult.Synced(snapshot, changed, setup?.changed ?: false, setup?.transition)
+                val stops = if (stoppedSessions.isEmpty()) emptyList() else {
+                    val loaded = checkNotNull(load(c, childId, now)) { "Das Kind des Kindgeräts fehlt" }
+                    stoppedSessions.map { (id, end) -> AutomaticStop(childId, id, end, loaded.name, loaded.stand.ueberziehungsgrenze) }
+                }
+                SyncResult.Synced(snapshot, changed, setup?.changed ?: false, setup?.transition, stops)
             }
         } catch (_: ForeignSessionException) {
             // Thrown inside the transaction on purpose: everything of this batch is rolled back.
@@ -371,8 +377,9 @@ class ChildService(
     private enum class Upsert { FOREIGN, CHANGED, UNCHANGED }
 
     /** [Upsert.FOREIGN] when the id belongs to a Sitzung of another Kind, [Upsert.CHANGED] when a Start or Stopp was new. */
-    private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant): Upsert {
+    private fun upsert(c: Connection, childId: String, update: SessionUpdate, now: Instant, stopped: MutableList<Pair<String, Instant>>): Upsert {
         var changed = false
+        var timelyStart = true
         val existing = c.prepareStatement("SELECT child_id FROM sessions WHERE id = ?").use { st ->
             st.setString(1, update.id)
             st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
@@ -380,6 +387,7 @@ class ChildService(
         if (existing == null) {
             // A Start learned late is "offline erfasst". Times lie in [end of the previous Sitzung, now].
             val startAge = update.startAgeMillis.coerceAtLeast(0)
+            timelyStart = startAge <= OFFLINE_DELAY.toMillis()
             val start = maxOf(now.minusMillis(startAge).toEpochMilli(), previousEnd(c, childId, now.minusMillis(startAge)))
             c.prepareStatement("INSERT INTO sessions (id, child_id, start_at, recorded_offline) VALUES (?,?,?,?)").use {
                 it.setString(1, update.id)
@@ -409,10 +417,38 @@ class ChildService(
                 it.setString(3, update.id)
                 it.setLong(4, end)
                 it.setLong(5, END_TOLERANCE.toMillis())
-                if (it.executeUpdate() > 0) changed = true
+                if (it.executeUpdate() > 0) {
+                    changed = true
+                    // The Automatischer Stopp of the Kindgerät reaches us before the server's own run: it is the same stop for
+                    // the Eltern, so it is reported (once, the Vermerk is shared with the server's own stop). Not when the end
+                    // is old news (Kindgerät offline for long) and not for a Sitzung the server never saw running (offline).
+                    val reportable = update.endReason == SessionEndReason.AUTOMATIC_STOP && endAge <= OFFLINE_DELAY.toMillis() &&
+                        (existing != null || timelyStart)
+                    if (reportable && markAutomaticStop(c, update.id, now)) stopped += update.id to now.minusMillis(endAge.coerceAtLeast(0))
+                }
             }
         }
         return if (changed) Upsert.CHANGED else Upsert.UNCHANGED
+    }
+
+    /**
+     * Sets the "gemeldet" Vermerk of the Automatischer Stopp of [sessionId] (one per Sitzung, whoever stops first: the
+     * server's scheduler or the sync of the Kindgerät). True when this call set it, so only one caller reports.
+     */
+    private fun markAutomaticStop(c: Connection, sessionId: String, now: Instant): Boolean {
+        val already = c.prepareStatement("SELECT 1 FROM session_notifications WHERE session_id = ? AND kind = ?").use { st ->
+            st.setString(1, sessionId)
+            st.setString(2, AUTOMATIC_STOP)
+            st.executeQuery().use { it.next() }
+        }
+        if (already) return false
+        return c.prepareStatement("INSERT OR IGNORE INTO session_notifications (session_id, kind, day, notified_at) VALUES (?,?,?,?)").use {
+            it.setString(1, sessionId)
+            it.setString(2, AUTOMATIC_STOP)
+            it.setString(3, now.atZone(zone).toLocalDate().toString())
+            it.setLong(4, now.toEpochMilli())
+            it.executeUpdate() == 1
+        }
     }
 
     /** The end of the latest ended Sitzung of the Kind that started no later than [start] (epoch millis), 0 if none. */
@@ -517,6 +553,9 @@ class ChildService(
 
         /** Kind of the "gemeldet" mark in `session_notifications` for the notification "Restzeit 0". */
         const val RESTZEIT_NULL = "RESTZEIT_NULL"
+
+        /** Kind of the "gemeldet" mark for the notification "Automatischer Stopp" (one per Sitzung). */
+        const val AUTOMATIC_STOP = "AUTOMATIC_STOP"
     }
 
     private data class Loaded(
@@ -702,6 +741,8 @@ sealed interface SyncResult {
         val changed: Boolean = false,
         val setupChanged: Boolean = false,
         val setupTransition: List<SetupItem>? = null,
+        /** Automatische Stopps the Kindgerät reported with this batch that are news to the Eltern (see [ChildService.markAutomaticStop]). */
+        val automaticStops: List<AutomaticStop> = emptyList(),
     ) : SyncResult
 
     data class Invalid(val reason: String) : SyncResult

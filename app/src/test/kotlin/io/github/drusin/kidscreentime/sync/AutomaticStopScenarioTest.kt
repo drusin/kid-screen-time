@@ -87,6 +87,44 @@ class AutomaticStopScenarioTest {
     }
 
     @Test
+    fun `Tablet-Sync vor dem Planer und Planer danach melden den Automatischen Stopp genau einmal`() = scenario {
+        val heard = java.util.concurrent.CopyOnWriteArrayList<String>()
+        server.services.automaticStops.onStopped { heard += it.childName }
+        val id = start()
+        sync()
+        online = false
+        advance(Duration.ofMinutes(120))
+        child.app.container.alarmKern.trigger() // local stop at the Überziehungsgrenze, the sync inside fails: offline
+        advance(Duration.ofSeconds(20))
+        online = true
+        assertEquals(ChildSyncResult.Synced, sync()) // arrives before the server's own run
+
+        assertEquals(1, heard.size, "Die Meldung kommt mit dem Sync des Tablets")
+        server.services.scheduler.runDue()
+        sync()
+        server.services.scheduler.runDue()
+        assertEquals(1, heard.size, "Der Planer danach meldet nichts mehr, auch kein zweiter Sync")
+        assertEquals("AUTOMATIC_STOP", serverSession(id).third)
+    }
+
+    @Test
+    fun `Ein Automatischer Stopp, der erst lange danach per Offline-Sync ankommt, wird nicht nachträglich gemeldet`() = scenario {
+        val heard = java.util.concurrent.CopyOnWriteArrayList<String>()
+        server.services.automaticStops.onStopped { heard += it.childName }
+        start()
+        sync()
+        online = false
+        advance(Duration.ofMinutes(120))
+        child.app.container.alarmKern.trigger()
+        advance(Duration.ofMinutes(30))
+        online = true
+        assertEquals(ChildSyncResult.Synced, sync())
+        server.services.scheduler.runDue()
+
+        assertEquals(emptyList(), heard)
+    }
+
+    @Test
     fun `Das Tablet stoppt lokal, auch wenn der Server nichts davon weiß, und das Ende stimmt mit der Grenze überein`() = scenario {
         val start = server.clock.now().toEpochMilli()
         val id = start()

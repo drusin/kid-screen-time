@@ -90,7 +90,7 @@ class DeviceManagementScenarioTest {
         assertEquals(ChildSyncResult.Synced, newDevice.sync())
 
         assertEquals(sessionId, newDevice.storedSnapshot()?.status?.runningSession?.id)
-        val viewModel = main.track(ChildHomeViewModel(newDevice.app.container.childRepository, newDevice.app.container.wallClock, newDevice.app.container.setupChecklist))
+        val viewModel = track(ChildHomeViewModel(newDevice.app.container.childRepository, newDevice.app.container.wallClock, newDevice.app.container.setupChecklist))
         waitFor("Sitzung am neuen Gerät laufend") { viewModel.state.value.stand?.laufendeSitzung?.id == sessionId }
         assertEquals(ChildAction.STOP, viewModel.state.value.action)
         assertEquals(Zustand.LAEUFT, viewModel.state.value.stand?.zustand)

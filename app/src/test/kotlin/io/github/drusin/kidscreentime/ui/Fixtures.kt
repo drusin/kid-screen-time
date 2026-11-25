@@ -19,8 +19,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -72,6 +75,40 @@ class TestContainer(
         parentNotifier = { title, text -> shownNotifications += title to text },
         setupChecks = setupChecks,
     )
+
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    init {
+        OpenTestContainers.register(this)
+    }
+
+    /**
+     * Ends the container: cancels what runs on its `applicationScope` and waits for it, then closes the Room database. Only
+     * then is nothing left that opens a connection to a closed database or never closes one ("database is not open", leaked
+     * `SQLiteDatabase` with a stack trace after the test). Idempotent. Nobody calls it by hand: `MainDispatcherRule` and
+     * `syncScenario` close every container they know of, in the right order (ViewModels and observers first).
+     */
+    fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        runBlocking { container.applicationScope.coroutineContext.job.cancelAndJoin() }
+        runCatching { database.close() }
+    }
+}
+
+/** Every [TestContainer] of the running test, so the rule that owns the test's end can close them (see [TestContainer.close]). */
+object OpenTestContainers {
+    private val open = java.util.concurrent.CopyOnWriteArrayList<TestContainer>()
+
+    internal fun register(container: TestContainer) {
+        open += container
+    }
+
+    /** Closes all containers built since the last call. Call after the ViewModels and observers of the test were cancelled. */
+    fun closeAll() {
+        val containers = open.toList()
+        open.clear()
+        containers.forEach { it.close() }
+    }
 }
 
 /** The system checks of a simulated device: nothing is missing until the test says so. */

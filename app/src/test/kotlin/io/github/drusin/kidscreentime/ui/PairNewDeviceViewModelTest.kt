@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -54,12 +53,6 @@ class PairNewDeviceViewModelTest {
         }
         runBlocking { app.container.pairingRepository.pair("https://kst.example.org", "ABCD-EFGH", "Handy von Mama") }
         app.requests.clear()
-    }
-
-    @After
-    fun tearDown() {
-        main.cancelViewModels()
-        app.database.close()
     }
 
     private fun codeResponse(snapshotJson: String, replaces: String? = null, childName: String? = "Mia") = buildString {

@@ -26,7 +26,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -47,12 +46,6 @@ class ChildHomeViewModelTest {
         serve(testChildSnapshot(app.clock.now()))
         runBlocking { app.container.pairingRepository.pair("https://kst.example.org", "ABCD-EFGH", "Tablet") }
         app.requests.clear()
-    }
-
-    @After
-    fun tearDown() {
-        main.cancelViewModels()
-        app.database.close()
     }
 
     /** The server answers the pairing as a Kindgerät and then always with [snapshot]. */
