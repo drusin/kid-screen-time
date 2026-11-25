@@ -47,6 +47,9 @@ class TestContainer(
     var retriesScheduled = 0
         private set
 
+    /** The Eltern-Benachrichtigungen the app showed (title to text), ticket 14. */
+    val shownNotifications: MutableList<Pair<String, String>> = java.util.concurrent.CopyOnWriteArrayList()
+
     /** Written by the engine thread, read by the test thread. */
     val requests: MutableList<HttpRequestData> = java.util.concurrent.CopyOnWriteArrayList()
     var handler: MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { respondJson("{}") }
@@ -63,6 +66,7 @@ class TestContainer(
         alarmEffects = alarmEffects,
         syncRetry = syncRetry ?: SyncRetry { retriesScheduled++ },
         unregisterPush = { pushUnregistrations++ },
+        parentNotifier = { title, text -> shownNotifications += title to text },
     )
 }
 

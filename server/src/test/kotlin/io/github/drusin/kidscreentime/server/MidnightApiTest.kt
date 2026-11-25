@@ -57,7 +57,7 @@ class MidnightApiTest {
             server.clock.setWallClock(Instant.parse(startUtc))
             val child = server.pairDevice(client, DeviceRole.CHILD)
             client.startSession(child)
-            due = server.services.scheduler.nextDue()
+            due = server.services.children.nextMidnight(child.childId!!, server.clock.now())
         }
         return due
     }
@@ -71,16 +71,20 @@ class MidnightApiTest {
         val id = client.startSession(child)
         val midnight = Instant.parse("2026-01-05T23:00:00Z")
 
-        // Alter Tag: Montag 60 min, Überziehungsgrenze 60 min: der Stopp läge um 00:30, hinter Mitternacht. Der Planer wacht davor auf.
+        // Alter Tag: Montag 60 min, Überziehungsgrenze 60 min: Restzeit 0 um 23:30, der Stopp läge um 00:30, hinter Mitternacht.
+        server.clock.advance(Duration.ofMinutes(60))
+        assertEquals(1, server.services.scheduler.runDue(), "Benachrichtigung Restzeit 0")
+        // Der Planer wacht vor dem Stopp auf, zu Mitternacht.
         assertEquals(midnight, server.services.scheduler.nextDue())
 
-        server.clock.advance(Duration.ofMinutes(90)) // 00:00 Dienstag
+        server.clock.advance(Duration.ofMinutes(30)) // 00:00 Dienstag
         assertEquals(0, server.services.scheduler.runDue())
-        // Neuer Tag: Dienstag 60 min ab 00:00 plus 60 min Grenze = Stopp um 02:00, nicht um 00:30.
-        assertEquals(Instant.parse("2026-01-06T01:00:00Z"), server.services.scheduler.nextDue())
+        // Neuer Tag: Dienstag 60 min ab 00:00: Restzeit 0 um 01:00 (neue Benachrichtigung), Stopp um 02:00 statt 00:30.
+        assertEquals(Instant.parse("2026-01-06T00:00:00Z"), server.services.scheduler.nextDue())
+        assertEquals(Instant.parse("2026-01-06T01:00:00Z"), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()))
 
         server.clock.advance(Duration.ofMinutes(90)) // 01:30, der Stopp des alten Tages (00:30) ist verstrichen
-        assertEquals(0, server.services.scheduler.runDue())
+        assertEquals(1, server.services.scheduler.runDue(), "Nur Restzeit 0 des neuen Tages")
         assertNull(server.endOf(id), "Die Sitzung läuft weiter: ab 00:00 zählt das neue Kontingent")
 
         server.clock.advance(Duration.ofMinutes(35)) // 02:05

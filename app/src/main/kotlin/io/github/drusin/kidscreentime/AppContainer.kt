@@ -21,6 +21,8 @@ import io.github.drusin.kidscreentime.pairing.PairingRepository
 import io.github.drusin.kidscreentime.pairing.PairingStorage
 import io.github.drusin.kidscreentime.pairing.TokenStore
 import io.github.drusin.kidscreentime.parent.ParentRepository
+import io.github.drusin.kidscreentime.push.AndroidParentNotifier
+import io.github.drusin.kidscreentime.push.ParentNotifier
 import io.github.drusin.kidscreentime.push.PushHandler
 import io.github.drusin.kidscreentime.push.PushRepository
 import io.github.drusin.kidscreentime.push.PushStorage
@@ -58,6 +60,8 @@ class AppContainer(
     val syncRetry: SyncRetry = WorkManagerSyncRetry(context),
     /** Tells the push distributor that this app no longer wants messages (after the Kopplung ended). Tests do nothing. */
     unregisterPush: () -> Unit = { UnifiedPush.unregister(context) },
+    /** Shows the Eltern-Benachrichtigungen (ticket 14). Tests record instead. */
+    parentNotifier: ParentNotifier = AndroidParentNotifier(context),
 ) {
     val httpClient = createHttpClient(engine)
     val pairingRepository: PairingRepository = PairingRepository(httpClient, tokenStore, PairingStorage(context), onUnpaired = {
@@ -68,7 +72,7 @@ class AppContainer(
     val parentRepository = ParentRepository(httpClient, pairingRepository)
     val childRepository = ChildRepository(httpClient, pairingRepository, database, wallClock, monotonicClock, syncRetry)
     val pushRepository: PushRepository = PushRepository(httpClient, pairingRepository, PushStorage(context))
-    val pushHandler = PushHandler(pairingRepository, childRepository)
+    val pushHandler = PushHandler(pairingRepository, childRepository, parentNotifier)
 
     /** For work that outlives a screen, e.g. what a push message triggers. Lives as long as the process. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

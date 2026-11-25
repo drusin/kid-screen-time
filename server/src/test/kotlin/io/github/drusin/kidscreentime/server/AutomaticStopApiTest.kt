@@ -100,7 +100,8 @@ class AutomaticStopApiTest {
 
         server.clock.advance(Duration.ofMinutes(119))
 
-        assertEquals(0, server.services.scheduler.runDue())
+        // Only the notification "Restzeit 0" (at 60 min) ran, the Automatischer Stopp is not due.
+        assertEquals(1, server.services.scheduler.runDue())
         assertNull(server.storedSession(id).second)
     }
 
@@ -112,7 +113,7 @@ class AutomaticStopApiTest {
         val start = server.clock.now()
         client.startSession(child)
 
-        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.scheduler.nextDue())
+        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()))
     }
 
     @Test
@@ -126,7 +127,7 @@ class AutomaticStopApiTest {
 
         // Restart: a new process on the same database file and the same time. Nothing was stored about plans.
         val restarted = TestServer(dir, server.clock)
-        assertEquals(java.time.Instant.ofEpochMilli(start + 120 * minute), restarted.services.scheduler.nextDue())
+        assertEquals(java.time.Instant.ofEpochMilli(start + 120 * minute), restarted.services.automaticStops.nextDue(child.childId!!, restarted.clock.now()))
         server.clock.advance(Duration.ofMinutes(40))
         assertEquals(1, restarted.services.scheduler.runDue())
 
@@ -210,7 +211,7 @@ class AutomaticStopApiTest {
         server.services.scheduler.runDue()
         server.services.scheduler.runDue()
 
-        assertEquals(listOf(AutomaticStop(checkNotNull(child.childId), id, start.plus(Duration.ofMinutes(120)))), heard, "Genau einmal")
+        assertEquals(listOf(AutomaticStop(checkNotNull(child.childId), id, start.plus(Duration.ofMinutes(120)), "Mia", Duration.ofMinutes(60))), heard, "Genau einmal")
     }
 
     @Test

@@ -187,13 +187,13 @@ class DailyAdjustmentApiTest {
             contentType(ContentType.Application.Json)
             setBody(ChildSyncRequest(listOf(SessionUpdate(UUID.randomUUID().toString(), startAgeMillis = 0))))
         }
-        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.scheduler.nextDue())
+        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()))
 
         client.book(parent.deviceToken, child.childId!!, 30)
-        assertEquals(start.plus(Duration.ofMinutes(150)), server.services.scheduler.nextDue(), "60 + 30 + 60 Überziehung")
+        assertEquals(start.plus(Duration.ofMinutes(150)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()), "60 + 30 + 60 Überziehung")
 
         client.undo(parent.deviceToken, child.childId!!)
-        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.scheduler.nextDue())
+        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()))
     }
 
     @Test

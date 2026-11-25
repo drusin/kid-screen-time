@@ -102,7 +102,8 @@ class ChildService(
      * Überziehungsgrenze was reached (not [now]), the reason "Automatischer Stopp". Null when nothing was due.
      */
     fun stopAutomatically(childId: String, now: Instant): AutomaticStop? = database.transaction { c ->
-        val stand = load(c, childId, now)?.stand ?: return@transaction null
+        val loaded = load(c, childId, now) ?: return@transaction null
+        val stand = loaded.stand
         val stop = stand.faelligeZeitpunkte(now).automatischerStopp?.takeUnless { it.isAfter(now) } ?: return@transaction null
         val session = stand.tagesstand(now).laufendeSitzung ?: return@transaction null
         val changed = c.prepareStatement(
@@ -112,8 +113,56 @@ class ChildService(
             it.setString(2, session.id)
             it.executeUpdate()
         }
-        if (changed == 1) AutomaticStop(childId, session.id, stop) else null
+        if (changed == 1) {
+            AutomaticStop(childId, session.id, stop, loaded.name, stand.ueberziehungsgrenze)
+        } else {
+            null
+        }
     }
+
+    /**
+     * When the "Restzeit 0" notification of the running Sitzung of [childId] is due (may lie in the past: the Sitzung
+     * is already in the Überziehung), null if no Sitzung runs or this Sitzung was reported already. Derived from the
+     * Alarm time of `domain`; the only memory is the "gemeldet" mark per Sitzung and day (migration 004).
+     */
+    fun nextRestzeitNull(childId: String, now: Instant): Instant? = database.transaction { c ->
+        val stand = load(c, childId, now)?.stand ?: return@transaction null
+        val session = stand.tagesstand(now).laufendeSitzung ?: return@transaction null
+        if (isReported(c, session.id, RESTZEIT_NULL, now.atZone(zone).toLocalDate())) return@transaction null
+        stand.faelligeZeitpunkte(now).liste.firstOrNull { it.ausloeser == Ausloeser.ALARM }?.zeitpunkt
+    }
+
+    /**
+     * Marks the running Sitzung of [childId] as "Restzeit 0 gemeldet" when that is due at [now] and returns what to
+     * tell the Eltern, null when nothing is due or it was reported already. The mark is set in the same transaction
+     * that decides, so concurrent or repeated calls (and a restart) give exactly one result per Sitzung.
+     */
+    fun reportRestzeitNull(childId: String, now: Instant): RestzeitNull? = database.transaction { c ->
+        val loaded = load(c, childId, now) ?: return@transaction null
+        val stand = loaded.stand
+        val tagesstand = stand.tagesstand(now)
+        val session = tagesstand.laufendeSitzung ?: return@transaction null
+        stand.faelligeZeitpunkte(now).liste.firstOrNull { it.ausloeser == Ausloeser.ALARM }
+            ?.takeUnless { it.zeitpunkt.isAfter(now) } ?: return@transaction null
+        val marked = c.prepareStatement("INSERT OR IGNORE INTO session_notifications (session_id, kind, day, notified_at) VALUES (?,?,?,?)").use {
+            it.setString(1, session.id)
+            it.setString(2, RESTZEIT_NULL)
+            it.setString(3, now.atZone(zone).toLocalDate().toString())
+            it.setLong(4, now.toEpochMilli())
+            it.executeUpdate()
+        }
+        if (marked == 0) return@transaction null
+        // Restzeit reached 0 when the Überziehung began; a Sitzung that started with Restzeit 0 begins at its start.
+        RestzeitNull(childId, session.id, loaded.name, maxOf(session.start, now - tagesstand.ueberziehung))
+    }
+
+    private fun isReported(c: Connection, sessionId: String, kind: String, day: LocalDate): Boolean =
+        c.prepareStatement("SELECT 1 FROM session_notifications WHERE session_id = ? AND kind = ? AND day = ?").use { st ->
+            st.setString(1, sessionId)
+            st.setString(2, kind)
+            st.setString(3, day.toString())
+            st.executeQuery().use { it.next() }
+        }
 
     fun exists(childId: String): Boolean = database.transaction { c ->
         c.prepareStatement("SELECT 1 FROM children WHERE id = ?").use { st ->
@@ -396,6 +445,9 @@ class ChildService(
 
         /** Two ends this close count as the same end (ages are measured again with every sync). */
         val END_TOLERANCE: Duration = Duration.ofSeconds(1)
+
+        /** Kind of the "gemeldet" mark in `session_notifications` for the notification "Restzeit 0". */
+        const val RESTZEIT_NULL = "RESTZEIT_NULL"
     }
 
     private class Loaded(val name: String, val stand: KindStand, val lastAdjustment: Int? = null)
@@ -514,3 +566,6 @@ sealed interface SyncResult {
     /** The id belongs to a Sitzung of another Kind: a Kindgerät may only upsert the Sitzungen of its own Kind. */
     data object ForeignSession : SyncResult
 }
+
+/** The Restzeit of the running Sitzung [sessionId] of the Kind [childName] reached 0 at [since]. */
+data class RestzeitNull(val childId: String, val sessionId: String, val childName: String, val since: Instant)

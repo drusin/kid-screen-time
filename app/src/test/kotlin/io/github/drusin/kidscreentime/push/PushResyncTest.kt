@@ -126,6 +126,47 @@ class PushResyncTest {
         assertEquals(1, app.requests.count { it.url.encodedPath == ApiPaths.PARENT_SNAPSHOT }, "Genau ein neuer Abgleich")
     }
 
+    private fun pairedParent(role: String = "PARENT"): TestContainer {
+        val app = TestContainer()
+        app.handler = { request ->
+            when (request.url.encodedPath) {
+                ApiPaths.PAIRING_REDEEM -> respondJson("""{"deviceId":"d1","deviceToken":"tok-123","role":"$role"}""")
+                else -> respondJson("""{"serverTimeEpochMillis":0,"timeZone":"Europe/Berlin","devices":[],"children":[]}""")
+            }
+        }
+        runBlocking { app.container.pairingRepository.pair("https://kst.example.org", "ABCD-EFGH", "Handy") }
+        return app
+    }
+
+    @Test
+    fun `Ein Push mit Text zeigt am Elterngerät die Benachrichtigung ohne Netzzugriff und löst weiter den Abgleich aus`() = runTest {
+        val app = pairedParent()
+        app.requests.clear()
+
+        app.container.pushHandler.onMessage(
+            """{"title":"Bildschirmzeit","text":"Mia: Kontingent abgelaufen (seit 14:32)"}""".toByteArray(),
+            decrypted = true,
+        )
+
+        assertEquals(listOf("Bildschirmzeit" to "Mia: Kontingent abgelaufen (seit 14:32)"), app.shownNotifications)
+        assertTrue(app.requests.isEmpty(), "Die Benachrichtigung braucht keinen eigenen Netzzugriff")
+    }
+
+    @Test
+    fun `Ein Push ohne Text, ein nicht entschlüsselter und das Kindgerät zeigen keine Benachrichtigung`() = runTest {
+        val parent = pairedParent()
+        parent.container.pushHandler.onMessage("{}".toByteArray(), decrypted = true)
+        parent.container.pushHandler.onMessage(signalBytes, decrypted = false)
+        val unpaired = TestContainer()
+        unpaired.container.pushHandler.onMessage(signalBytes, decrypted = true)
+        val child = pairedParent("CHILD")
+        child.container.pushHandler.onMessage(signalBytes, decrypted = true)
+
+        assertTrue(parent.shownNotifications.isEmpty())
+        assertTrue(unpaired.shownNotifications.isEmpty())
+        assertTrue(child.shownNotifications.isEmpty())
+    }
+
     private suspend fun TestContainer.snapshotRequests(count: Int) =
         waitFor("$count Abgleich(e) des Eltern-Snapshots") { requests.count { it.url.encodedPath == ApiPaths.PARENT_SNAPSHOT } >= count }
 

@@ -44,14 +44,19 @@ class ServerServices(
             val database = Database.open(config.databasePath)
             val children = ChildService(database, wallClock, config.familyZone)
             val automaticStops = AutomaticStopEvents(children)
-            // More sources (notification "Restzeit 0", ticket 14) are added to this list.
-            val scheduler = EventScheduler(wallClock, children, listOf(automaticStops, MidnightEvents(children)))
+            val restzeitNull = RestzeitNullEvents(children)
+            // Order matters: the Automatischer Stopp comes first, so a Sitzung it ends gets no "Restzeit 0" afterwards.
+            val scheduler = EventScheduler(wallClock, children, listOf(automaticStops, restzeitNull, MidnightEvents(children)))
             children.onStandChanged(scheduler::wake)
             val push = PushService(database, config, publisher)
-            // Resync-Signale nach einem Automatischen Stopp: das Kindgerät holt sein Ende, die Elterngeräte den neuen Stand.
+            // Nach einem Automatischen Stopp: das Kindgerät holt sein Ende, die Elterngeräte bekommen die Benachrichtigung
+            // (ein Push mit Text, löst am Elterngerät auch den Abgleich aus, also kein zweites Signal).
             automaticStops.onStopped { stop ->
                 push.signalChild(stop.childId)
-                push.signalParents()
+                push.signalParents(ParentNotifications.automaticStop(stop))
+            }
+            restzeitNull.onReached { event ->
+                push.signalParents(ParentNotifications.restzeitNull(event, config.familyZone))
             }
             return ServerServices(
                 config = config,

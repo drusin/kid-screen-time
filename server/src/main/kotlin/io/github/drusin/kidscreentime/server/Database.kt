@@ -36,7 +36,7 @@ class Database private constructor(private val connection: Connection) : AutoClo
     override fun close() = synchronized(lock) { if (!connection.isClosed) connection.close() }
 
     companion object {
-        val MIGRATIONS = listOf("db/migration/001_pairing.sql", "db/migration/002_kind_stand.sql", "db/migration/003_adjustment_reversal.sql")
+        val MIGRATIONS = listOf("db/migration/001_pairing.sql", "db/migration/002_kind_stand.sql", "db/migration/003_adjustment_reversal.sql", "db/migration/004_session_notifications.sql")
 
         fun open(path: Path): Database {
             path.toAbsolutePath().parent?.let { Files.createDirectories(it) }

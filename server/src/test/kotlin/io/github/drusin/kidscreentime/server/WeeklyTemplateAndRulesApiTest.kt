@@ -176,11 +176,11 @@ class WeeklyTemplateAndRulesApiTest {
             contentType(ContentType.Application.Json)
             setBody(ChildSyncRequest(listOf(SessionUpdate(UUID.randomUUID().toString(), startAgeMillis = 0))))
         }
-        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.scheduler.nextDue())
+        assertEquals(start.plus(Duration.ofMinutes(120)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()))
 
         client.setRules(parent.deviceToken, child.childId!!, overrun = 30)
 
-        assertEquals(start.plus(Duration.ofMinutes(90)), server.services.scheduler.nextDue(), "60 + 30 Überziehung")
+        assertEquals(start.plus(Duration.ofMinutes(90)), server.services.automaticStops.nextDue(child.childId!!, server.clock.now()), "60 + 30 Überziehung")
     }
 
     @Test

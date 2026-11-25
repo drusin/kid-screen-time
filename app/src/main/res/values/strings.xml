@@ -44,6 +44,7 @@
     <string name="alarm_silence">Ton aus · klingelt in 5 min wieder</string>
     <string name="alarm_silence_short">Ton aus</string>
     <string name="alarm_channel_name">Alarm</string>
+    <string name="parent_notification_channel_name">Meldungen für Eltern</string>
     <string name="warning_title">Gleich ist die Zeit um</string>
     <string name="warning_snackbar">Gleich vorbei: Noch %1$s übrig.</string>
     <string name="parent_status_running_since">Sitzung läuft seit %1$s Uhr</string>
