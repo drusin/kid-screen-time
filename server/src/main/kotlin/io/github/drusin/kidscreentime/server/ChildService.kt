@@ -5,6 +5,10 @@ import io.github.drusin.kidscreentime.api.ChildSnapshot
 import io.github.drusin.kidscreentime.api.ChildState
 import io.github.drusin.kidscreentime.api.ChildStatus
 import io.github.drusin.kidscreentime.api.DayAdjustment
+import io.github.drusin.kidscreentime.api.HistoryAdjustment
+import io.github.drusin.kidscreentime.api.HistoryDay
+import io.github.drusin.kidscreentime.api.HistorySession
+import io.github.drusin.kidscreentime.api.RecentDay
 import io.github.drusin.kidscreentime.api.ParentChildSnapshot
 import io.github.drusin.kidscreentime.api.RunningSession
 import io.github.drusin.kidscreentime.api.SessionUpdate
@@ -18,7 +22,9 @@ import io.github.drusin.kidscreentime.domain.bildschirmzeit.KindStand
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Sitzung
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.SitzungsEnde
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tagesanpassung
+import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tageskontingent
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Tagesstand
+import io.github.drusin.kidscreentime.domain.bildschirmzeit.Verlaufstag
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Wochenvorlage
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.WochenvorlageVersion
 import io.github.drusin.kidscreentime.domain.bildschirmzeit.Zustand
@@ -30,6 +36,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -192,7 +199,9 @@ class ChildService(
      * - Times are "now − age" with now = server time at receipt, never in the future.
      * - An unknown id creates the Sitzung. For a known one the start stays (a repeated batch changes nothing).
      * - The earlier end wins (in time): a later stop for an already ended Sitzung (e.g. after an Automatischer Stopp)
-     *   changes nothing, an earlier one replaces the end and the reason becomes "gestoppt".
+     *   changes nothing, an earlier one replaces the end and the reason becomes the one sent with it ("gestoppt" unless
+     *   the Kindgerät sent [SessionEndReason.AUTOMATIC_STOP], so a local Automatischer Stopp that arrives before the
+     *   server's own keeps its mark for the Verlauf).
      * - A new Sitzung starts no earlier than the end of the previous one (overlaps are cut) and is marked "offline
      *   erfasst" when the server learns of its start later than [OFFLINE_DELAY] after it.
      *
@@ -390,14 +399,16 @@ class ChildService(
             // Stopp), then the reason is "gestoppt". A later end changes nothing. Ends within END_TOLERANCE count as
             // equal, so a repeated batch (the age was measured again) cannot move the end. The end never lies before the start.
             c.prepareStatement(
-                "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = 'STOPPED' " +
+                "UPDATE sessions SET end_at = MAX(?, start_at), end_reason = ? " +
                     "WHERE id = ? AND (end_at IS NULL OR MAX(?, start_at) < end_at - ?)",
             ).use {
                 val end = now.minusMillis(endAge.coerceAtLeast(0)).toEpochMilli()
                 it.setLong(1, end)
-                it.setString(2, update.id)
-                it.setLong(3, end)
-                it.setLong(4, END_TOLERANCE.toMillis())
+                // The Kindgerät names the reason when its own Alarmkern stopped at the Überziehungsgrenze; otherwise the Kind stopped.
+                it.setString(2, if (update.endReason == SessionEndReason.AUTOMATIC_STOP) "AUTOMATIC_STOP" else "STOPPED")
+                it.setString(3, update.id)
+                it.setLong(4, end)
+                it.setLong(5, END_TOLERANCE.toMillis())
                 if (it.executeUpdate() > 0) changed = true
             }
         }
@@ -453,7 +464,7 @@ class ChildService(
             val ids = c.createStatement().use { st ->
                 st.executeQuery("SELECT id FROM children ORDER BY created_at, id").use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
             }
-            ids.mapNotNull { id -> load(c, id, now)?.let { id to it.copy(missingSetup = missingSetupItems(c, id)) } }
+            ids.mapNotNull { id -> load(c, id, now, extraDays = RECENT_DAYS)?.let { id to it.copy(missingSetup = missingSetupItems(c, id)) } }
         }.map { (id, loaded) ->
             val stand = loaded.stand
             ParentChildSnapshot(
@@ -466,11 +477,38 @@ class ChildService(
                 weeklyTemplateTomorrow = stand.wochenvorlage.dtoFor(tag.plusDays(1)),
                 lastAdjustmentMinutes = loaded.lastAdjustment,
                 missingSetupItems = loaded.missingSetup,
+                recentDays = verlauf(loaded, now, RECENT_DAYS, mitHeute = false).map { it.toRecent() },
             )
         }
     }
 
+    /**
+     * The complete Verlauf of [childId] ([FULL_HISTORY_DAYS] days including today, newest first, none before the Kind
+     * existed), null for an unknown Kind. Calculated by `domain` ([KindStand.verlauf]) from the stored Sitzungen and
+     * Tagesanpassungen; the Mitternachtsaufteilung happens there, nothing is stored.
+     */
+    fun history(childId: String): List<HistoryDay>? {
+        val now = wallClock.now()
+        return database.transaction { c ->
+            val loaded = load(c, childId, now, extraDays = FULL_HISTORY_DAYS) ?: return@transaction null
+            verlauf(loaded, now, FULL_HISTORY_DAYS, mitHeute = true).map { it.toDto() }
+        }
+    }
+
+    /** At most [tage] days of the Verlauf, but none from before the day the Kind was created. */
+    private fun verlauf(loaded: Loaded, now: Instant, tage: Int, mitHeute: Boolean): List<Verlaufstag> {
+        val heute = now.atZone(zone).toLocalDate()
+        val seitAnlage = ChronoUnit.DAYS.between(loaded.createdOn, heute).toInt() + if (mitHeute) 1 else 0
+        return loaded.stand.verlauf(now, minOf(tage, seitAnlage).coerceAtLeast(0), mitHeute)
+    }
+
     private companion object {
+        /** "Letzte Tage" of the Startseite (without today). */
+        const val RECENT_DAYS = 7
+
+        /** The full Verlauf covers this many days (including today). */
+        const val FULL_HISTORY_DAYS = 90
+
         /** A Start the server learns of later than this after it happened is "offline erfasst" (a slow request is not). */
         val OFFLINE_DELAY: Duration = Duration.ofMinutes(1)
 
@@ -484,6 +522,7 @@ class ChildService(
     private data class Loaded(
         val name: String,
         val stand: KindStand,
+        val createdOn: LocalDate,
         val lastAdjustment: Int? = null,
         val missingSetup: List<SetupItem> = emptyList(),
     )
@@ -497,15 +536,21 @@ class ChildService(
             }
         }
 
-    /** Loads the input of `domain` for the day of [now]: Wochenvorlage, today's Sitzungen and Tagesanpassungen, rules. */
-    private fun load(c: Connection, childId: String, now: Instant): Loaded? {
+    private class ChildRow(val name: String, val warning: Long, val overrun: Long, val createdAt: Long)
+
+    /**
+     * Loads the input of `domain` for the day of [now]: Wochenvorlage, today's Sitzungen and Tagesanpassungen, rules.
+     * With [extraDays] > 0 the Sitzungen and Tagesanpassungen of that many days before today are loaded too (Verlauf).
+     */
+    private fun load(c: Connection, childId: String, now: Instant, extraDays: Int = 0): Loaded? {
         val tag = now.atZone(zone).toLocalDate()
-        val tagesbeginn = tag.atStartOfDay(zone).toInstant()
-        val (name, warning, overrun) = c.prepareStatement(
-            "SELECT name, warning_threshold_minutes, overrun_limit_minutes FROM children WHERE id = ?",
+        val ab = tag.minusDays(extraDays.toLong())
+        val tagesbeginn = ab.atStartOfDay(zone).toInstant()
+        val row = c.prepareStatement(
+            "SELECT name, warning_threshold_minutes, overrun_limit_minutes, created_at FROM children WHERE id = ?",
         ).use { st ->
             st.setString(1, childId)
-            st.executeQuery().use { rs -> if (rs.next()) Triple(rs.getString(1), rs.getLong(2), rs.getLong(3)) else null }
+            st.executeQuery().use { rs -> if (rs.next()) ChildRow(rs.getString(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) else null }
         } ?: return null
 
         val versions = c.prepareStatement(
@@ -526,16 +571,30 @@ class ChildService(
             }
         }
         val adjustments = c.prepareStatement(
-            "SELECT day, delta_minutes, booked_at FROM daily_adjustments WHERE child_id = ? AND day = ? ORDER BY booked_at, id",
+            "SELECT day, delta_minutes, booked_at, id, reverses_id FROM daily_adjustments WHERE child_id = ? AND day >= ? AND day <= ? ORDER BY booked_at, id",
         ).use { st ->
             st.setString(1, childId)
-            st.setString(2, tag.toString())
+            st.setString(2, ab.toString())
+            st.setString(3, tag.toString())
             st.executeQuery().use { rs ->
-                buildList { while (rs.next()) add(Tagesanpassung(LocalDate.parse(rs.getString(1)), rs.getInt(2), Instant.ofEpochMilli(rs.getLong(3)))) }
+                buildList {
+                    while (rs.next()) {
+                        val reverses = rs.getLong(5).takeUnless { rs.wasNull() }
+                        add(
+                            Tagesanpassung(
+                                LocalDate.parse(rs.getString(1)),
+                                rs.getInt(2),
+                                Instant.ofEpochMilli(rs.getLong(3)),
+                                id = rs.getLong(4).toString(),
+                                gegenbuchungZu = reverses?.toString(),
+                            ),
+                        )
+                    }
+                }
             }
         }
         val sessions = c.prepareStatement(
-            "SELECT id, start_at, end_at, end_reason FROM sessions WHERE child_id = ? AND (end_at IS NULL OR end_at > ?) ORDER BY start_at, id",
+            "SELECT id, start_at, end_at, end_reason, recorded_offline FROM sessions WHERE child_id = ? AND (end_at IS NULL OR end_at > ?) ORDER BY start_at, id",
         ).use { st ->
             st.setString(1, childId)
             st.setLong(2, tagesbeginn.toEpochMilli())
@@ -548,6 +607,7 @@ class ChildService(
                                 rs.getString(1),
                                 Instant.ofEpochMilli(rs.getLong(2)),
                                 end?.let { SitzungsEnde(Instant.ofEpochMilli(it), if (rs.getString(4) == "AUTOMATIC_STOP") Endegrund.AUTOMATISCHER_STOPP else Endegrund.GESTOPPT) },
+                                offlineErfasst = rs.getInt(5) == 1,
                             ),
                         )
                     }
@@ -559,10 +619,10 @@ class ChildService(
             wochenvorlage = Wochenvorlage(versions),
             tagesanpassungen = adjustments,
             sitzungen = sessions,
-            vorwarnschwelle = Duration.ofMinutes(warning),
-            ueberziehungsgrenze = Duration.ofMinutes(overrun),
+            vorwarnschwelle = Duration.ofMinutes(row.warning),
+            ueberziehungsgrenze = Duration.ofMinutes(row.overrun),
         )
-        return Loaded(name, stand, lastUndoableAdjustment(c, childId, tag)?.second)
+        return Loaded(row.name, stand, Instant.ofEpochMilli(row.createdAt).atZone(zone).toLocalDate(), lastUndoableAdjustment(c, childId, tag)?.second)
     }
 }
 
@@ -592,6 +652,35 @@ private fun Sitzung.toRecord(offline: Set<String>) = SessionRecord(
     startEpochMillis = start.toEpochMilli(),
     endEpochMillis = ende?.zeitpunkt?.toEpochMilli(),
     endReason = ende?.let { if (it.grund == Endegrund.AUTOMATISCHER_STOPP) SessionEndReason.AUTOMATIC_STOP else SessionEndReason.STOPPED },
+)
+
+private fun Tageskontingent.toBreakdown() = AllowanceBreakdown(
+    templateMinutes = vorlage.toMinutes().toInt(),
+    adjustmentMinutes = anpassungen.toMinutes().toInt(),
+    totalMinutes = gesamt.toMinutes().toInt(),
+)
+
+private fun Verlaufstag.toRecent() =
+    RecentDay(tag.toString(), tageskontingent.toBreakdown(), verbrauch.toMillis(), ueberziehung.toMillis())
+
+private fun Verlaufstag.toDto() = HistoryDay(
+    day = tag.toString(),
+    allowance = tageskontingent.toBreakdown(),
+    usedMillis = verbrauch.toMillis(),
+    overrunMillis = ueberziehung.toMillis(),
+    sessions = sitzungen.map {
+        HistorySession(
+            id = it.id,
+            startEpochMillis = it.von.toEpochMilli(),
+            endEpochMillis = it.bis?.toEpochMilli(),
+            durationMillis = it.dauer.toMillis(),
+            fromPreviousDay = it.vomVortag,
+            continuesNextDay = it.setztSichFort,
+            endReason = it.endegrund?.let { grund -> if (grund == Endegrund.AUTOMATISCHER_STOPP) SessionEndReason.AUTOMATIC_STOP else SessionEndReason.STOPPED },
+            recordedOffline = it.offlineErfasst,
+        )
+    },
+    adjustments = anpassungen.map { HistoryAdjustment(it.deltaMinuten, it.gebuchtAm.toEpochMilli(), it.istGegenbuchung, it.zurueckgenommen) },
 )
 
 private fun Wochenvorlage.dtoFor(tag: LocalDate): WeeklyTemplateVersion {

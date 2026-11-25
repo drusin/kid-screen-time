@@ -71,6 +71,22 @@ class AutomaticStopScenarioTest {
     }
 
     @Test
+    fun `Der lokale Automatische Stopp des Tablets bleibt für den Verlauf markiert, auch wenn sein Sync vor dem Lauf des Servers kommt`() = scenario {
+        val start = server.clock.now().toEpochMilli()
+        val id = start()
+        sync()
+        online = false
+        advance(Duration.ofMinutes(125))
+
+        child.app.container.alarmKern.trigger() // local stop at 120 min, the sync inside fails: offline
+        online = true
+        assertEquals(ChildSyncResult.Synced, sync()) // arrives before the server ran its own Automatischer Stopp
+
+        assertEquals(Triple(start, start + 120 * minute, "AUTOMATIC_STOP"), serverSession(id), "nicht „STOPPED“")
+        assertEquals(0, server.services.scheduler.runDue(), "der Server hat nichts mehr zu stoppen")
+    }
+
+    @Test
     fun `Das Tablet stoppt lokal, auch wenn der Server nichts davon weiß, und das Ende stimmt mit der Grenze überein`() = scenario {
         val start = server.clock.now().toEpochMilli()
         val id = start()

@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.ChildSnapshot
 import io.github.drusin.kidscreentime.api.ChildSyncRequest
+import io.github.drusin.kidscreentime.api.SessionEndReason
 import io.github.drusin.kidscreentime.api.SessionUpdate
 import io.github.drusin.kidscreentime.db.AppDatabase
 import io.github.drusin.kidscreentime.db.ChildSnapshotEntity
@@ -114,9 +115,9 @@ class ChildRepository(
     /**
      * Stops the Sitzung [sessionId]: its row in the Outbox gets the end. The caller syncs afterwards. [at] is the end
      * when it lies in the past (the Automatischer Stopp ends at the time the Überziehungsgrenze was reached, even if the
-     * alarm fired late); default is now.
+     * alarm fired late); default is now. [reason] is sent to the server with the end (Verlauf: "Automatisch gestoppt").
      */
-    suspend fun stopSession(sessionId: String, at: Instant? = null) {
+    suspend fun stopSession(sessionId: String, at: Instant? = null, reason: SessionEndReason = SessionEndReason.STOPPED) {
         database.withTransaction {
             val row = outboxDao.find(sessionId) ?: run {
                 // Known only from the snapshot (started at an earlier time): the Stopp brings its Start with it.
@@ -132,6 +133,7 @@ class ChildRepository(
                     endMonotonicMillis = monotonicClock.elapsed().toMillis() - Duration.between(end, now).toMillis(),
                     endWallMillis = end.toEpochMilli(),
                     revision = row.revision + 1,
+                    endReason = reason.name,
                 ),
             )
         }
@@ -235,4 +237,5 @@ private fun OutboxSessionEntity.toUpdate(clocks: SyncClocks) = SessionUpdate(
     id = sessionId,
     startAgeMillis = clocks.ageOf(startMonotonicMillis, startWallMillis),
     endAgeMillis = if (endMonotonicMillis != null && endWallMillis != null) clocks.ageOf(endMonotonicMillis, endWallMillis) else null,
+    endReason = endReason?.let { name -> SessionEndReason.entries.firstOrNull { it.name == name } },
 )

@@ -132,4 +132,25 @@
     <string name="setup_banner">Einrichtung unvollständig: %1$s</string>
     <string name="setup_banner_action">Tippen zum Beheben</string>
     <string name="parent_status_setup_missing">Am Tablet fehlt: %1$s</string>
+    <string name="history_recent_title">Letzte Tage</string>
+    <string name="history_recent_empty">Noch keine vergangenen Tage.</string>
+    <string name="history_open">Ganzen Verlauf öffnen</string>
+    <string name="history_needs_server">Der ganze Verlauf braucht eine Verbindung zum Server und ist offline nicht verfügbar.</string>
+    <string name="history_title">Verlauf</string>
+    <string name="history_loading">Verlauf wird geladen …</string>
+    <string name="history_unknown_child">Das Kind ist dem Server nicht bekannt.</string>
+    <string name="history_day_line">%1$s: %2$s / %3$s</string>
+    <string name="history_used_of">%1$s von %2$s genutzt</string>
+    <string name="history_overrun">%1$s drüber</string>
+    <string name="history_no_sessions">Keine Sitzungen.</string>
+    <string name="history_session_line">%1$s – %2$s · %3$s</string>
+    <string name="history_midnight">00:00</string>
+    <string name="history_running">läuft</string>
+    <string name="history_from_previous_day">seit dem Vortag</string>
+    <string name="history_continues">läuft am nächsten Tag weiter</string>
+    <string name="history_automatic_stop">Automatisch gestoppt</string>
+    <string name="history_recorded_offline">offline erfasst</string>
+    <string name="history_adjustment_line">Anpassung %1$s um %2$s</string>
+    <string name="history_adjustment_taken_back">zurückgenommen</string>
+    <string name="history_adjustment_reversal">Gegenbuchung</string>
 </resources>

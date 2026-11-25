@@ -4,6 +4,7 @@ import io.github.drusin.kidscreentime.api.ApiPaths
 import io.github.drusin.kidscreentime.api.CreatePairingCodeRequest
 import io.github.drusin.kidscreentime.api.CreatePairingCodeResponse
 import io.github.drusin.kidscreentime.api.DailyAdjustmentRequest
+import io.github.drusin.kidscreentime.api.HistoryResponse
 import io.github.drusin.kidscreentime.api.RulesRequest
 import io.github.drusin.kidscreentime.api.UndoDailyAdjustmentRequest
 import io.github.drusin.kidscreentime.api.UnpairDeviceRequest
@@ -18,6 +19,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -53,6 +55,19 @@ sealed interface ParentActionResult {
 
     /** No network or no usable answer. Eltern-Aktionen need the server; the ViewModel switches to offline (ticket 17). */
     data object Unavailable : ParentActionResult
+}
+
+/** The answer of the full Verlauf (a read-only Eltern-Aktion: it needs the server, there is no cached copy). */
+sealed interface HistoryResult {
+    data class Loaded(val history: HistoryResponse) : HistoryResult
+
+    /** `400`: the Kind is unknown (for example after the family changed). */
+    data object Rejected : HistoryResult
+
+    data object Unauthorized : HistoryResult
+
+    /** No network or no usable answer. */
+    data object Unavailable : HistoryResult
 }
 
 sealed interface CreateCodeResult {
@@ -122,6 +137,28 @@ class ParentRepository(
             null
         }
         return if (cached != null) SnapshotResult.Cached(cached) else SnapshotResult.Unavailable
+    }
+
+    /** The complete Verlauf of [childId] (the last 90 days). Needs the server, nothing is cached. */
+    suspend fun history(childId: String): HistoryResult {
+        val device = (pairing.state.value as? DeviceState.Paired)?.device ?: return HistoryResult.Unauthorized
+        val token = pairing.token() ?: return HistoryResult.Unauthorized
+        return try {
+            val response = httpClient.get(device.serverUrl + ApiPaths.PARENT_HISTORY) {
+                bearerAuth(token)
+                parameter("childId", childId)
+            }
+            when (response.status) {
+                HttpStatusCode.OK -> HistoryResult.Loaded(response.body())
+                HttpStatusCode.BadRequest -> HistoryResult.Rejected
+                HttpStatusCode.Unauthorized -> HistoryResult.Unauthorized.also { revoked() }
+                else -> HistoryResult.Unavailable
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            HistoryResult.Unavailable
+        }
     }
 
     /** Creates a Kopplungscode for a Kindgerät or a further Elterngerät. */

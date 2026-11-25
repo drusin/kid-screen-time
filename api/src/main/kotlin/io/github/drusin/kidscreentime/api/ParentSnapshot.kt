@@ -32,7 +32,55 @@ data class ParentChildSnapshot(
     val lastAdjustmentMinutes: Int? = null,
     /** The prüfbaren Punkte of the Einrichtungs-Checkliste the Kindgerät reported as missing last (empty: vollständig). */
     val missingSetupItems: List<SetupItem> = emptyList(),
+    /** The "letzte Tage" of the Startseite: the days before today, newest first (at most 7, none before the Kind existed). */
+    val recentDays: List<RecentDay> = emptyList(),
 )
+
+/** One of the "letzten Tage": "genutzt / Kontingent", with the Überziehung marked. */
+@Serializable
+data class RecentDay(val day: String, val allowance: AllowanceBreakdown, val usedMillis: Long, val overrunMillis: Long)
+
+/** A Sitzung (the part of it that falls on one [HistoryDay]) in the Verlauf. Times are epoch millis, cut at midnight. */
+@Serializable
+data class HistorySession(
+    val id: String,
+    val startEpochMillis: Long,
+    /** Null while the Sitzung still runs (today only). */
+    val endEpochMillis: Long? = null,
+    val durationMillis: Long,
+    /** The Sitzung began before 00:00 of this day. */
+    val fromPreviousDay: Boolean = false,
+    /** The Sitzung runs past 00:00 of the next day. */
+    val continuesNextDay: Boolean = false,
+    /** Why the Sitzung ended, only on the day it ended. [SessionEndReason.AUTOMATIC_STOP] is "Automatisch gestoppt". */
+    val endReason: SessionEndReason? = null,
+    /** "offline erfasst". */
+    val recordedOffline: Boolean = false,
+)
+
+/** A Tagesanpassung in the Verlauf. [takenBack]: a later Gegenbuchung cancelled it; [reversal]: this one is such a Gegenbuchung. */
+@Serializable
+data class HistoryAdjustment(
+    val deltaMinutes: Int,
+    val bookedAtEpochMillis: Long,
+    val reversal: Boolean = false,
+    val takenBack: Boolean = false,
+)
+
+/** One day of the Verlauf, as `domain` calculates it. [allowance] is the Tageskontingent of that day. */
+@Serializable
+data class HistoryDay(
+    val day: String,
+    val allowance: AllowanceBreakdown,
+    val usedMillis: Long,
+    val overrunMillis: Long,
+    val sessions: List<HistorySession> = emptyList(),
+    val adjustments: List<HistoryAdjustment> = emptyList(),
+)
+
+/** The complete Verlauf of a Kind (answer of [ApiPaths.PARENT_HISTORY]), newest day first, including today. */
+@Serializable
+data class HistoryResponse(val childId: String, val timeZone: String, val days: List<HistoryDay>)
 
 /** A Tagesanpassung for today: [deltaMinutes] is the Zu- (+) or Abschlag (−) in minutes, never 0. */
 @Serializable

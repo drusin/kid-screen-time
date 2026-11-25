@@ -17,6 +17,8 @@ data class Sitzung(
     val id: String,
     val start: Instant,
     val ende: SitzungsEnde? = null,
+    /** Der Server hat den Start erst mit Verzögerung erfahren („offline erfasst“). Nur für den Verlauf, ohne Einfluss auf die Rechnung. */
+    val offlineErfasst: Boolean = false,
 ) {
     init {
         require(ende == null || !ende.zeitpunkt.isBefore(start)) { "Sitzung $id endet vor ihrem Start" }
