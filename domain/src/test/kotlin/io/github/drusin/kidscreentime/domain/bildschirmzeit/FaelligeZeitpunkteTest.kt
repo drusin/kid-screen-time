@@ -62,13 +62,38 @@ class FaelligeZeitpunkteTest {
     }
 
     @Test
-    fun `Die Vorwarnung kommt höchstens einmal pro Sitzung`() {
-        val gegeben = Alarmverlauf(vorwarnungGegeben = true)
+    fun `Die Vorwarnung kommt für dasselbe Ende des Kontingents nur einmal`() {
+        // Gewarnt wurde für das Ende in 3 min.
+        val gegeben = Alarmverlauf(vorwarnungFuer = clock.now() + minuten(3))
 
         val zeitpunkte = stand(sitzungen = listOf(laufend(seitMinuten = 57))).zeitpunkte(gegeben)
 
         assertNull(zeitpunkte.von(Ausloeser.VORWARNUNG))
         assertEquals(clock.now() + minuten(3), zeitpunkte.von(Ausloeser.ALARM))
+    }
+
+    @Test
+    fun `Nach einem Bonus kommt die Vorwarnung wieder 5 min vor dem neuen Ende`() {
+        // Gewarnt wurde für das alte Ende in 3 min, dann kamen 30 min Bonus.
+        val gegeben = Alarmverlauf(vorwarnungFuer = clock.now() + minuten(3))
+        val bonus = Tagesanpassung(LocalDate.of(2026, 1, 5), 30, clock.now())
+
+        val zeitpunkte = stand(sitzungen = listOf(laufend(seitMinuten = 57)), anpassungen = listOf(bonus)).zeitpunkte(gegeben)
+
+        assertEquals(clock.now() + minuten(28), zeitpunkte.von(Ausloeser.VORWARNUNG))
+        assertEquals(clock.now() + minuten(33), zeitpunkte.von(Ausloeser.ALARM))
+    }
+
+    @Test
+    fun `Ein Abzug nach der Vorwarnung löst keine zweite aus`() {
+        // Gewarnt wurde für das Ende in 3 min, ein Abzug von 2 min zieht es auf 1 min vor.
+        val gegeben = Alarmverlauf(vorwarnungFuer = clock.now() + minuten(3))
+        val abzug = Tagesanpassung(LocalDate.of(2026, 1, 5), -2, clock.now())
+
+        val zeitpunkte = stand(sitzungen = listOf(laufend(seitMinuten = 57)), anpassungen = listOf(abzug)).zeitpunkte(gegeben)
+
+        assertNull(zeitpunkte.von(Ausloeser.VORWARNUNG))
+        assertEquals(clock.now() + minuten(1), zeitpunkte.von(Ausloeser.ALARM))
     }
 
     @Test
@@ -99,7 +124,7 @@ class FaelligeZeitpunkteTest {
     @Test
     fun `Der Alarm wiederholt sich fest alle 5 Minuten nach dem letzten Klingeln`() {
         val sitzungen = listOf(laufend(seitMinuten = 62))
-        val geklingeltVor2Min = Alarmverlauf(vorwarnungGegeben = true, letzterAlarm = clock.now() - minuten(2))
+        val geklingeltVor2Min = Alarmverlauf(vorwarnungFuer = clock.now() - minuten(2), letzterAlarm = clock.now() - minuten(2))
 
         val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = sitzungen).zeitpunkte(geklingeltVor2Min)
 
@@ -135,9 +160,10 @@ class FaelligeZeitpunkteTest {
         val bonus = Tagesanpassung(LocalDate.of(2026, 1, 5), 20, clock.now())
 
         val zeitpunkte = stand(kontingentMinuten = 60, sitzungen = sitzungen, anpassungen = listOf(bonus))
-            .zeitpunkte(Alarmverlauf(vorwarnungGegeben = true, letzterAlarm = clock.now() - minuten(1)))
+            .zeitpunkte(Alarmverlauf(vorwarnungFuer = clock.now() - minuten(5), letzterAlarm = clock.now() - minuten(1)))
 
         assertEquals(clock.now() + minuten(15), zeitpunkte.von(Ausloeser.ALARM))
+        assertEquals(clock.now() + minuten(10), zeitpunkte.von(Ausloeser.VORWARNUNG), "neues Ende: wieder 5 min vorher warnen")
     }
 
     @Test
@@ -207,9 +233,9 @@ class FaelligeZeitpunkteTest {
 
         // 115 min gelaufen: der Stopp kommt in 5 min. Die Wiederholung in 2 min liegt davor, die nach 5 min nicht mehr.
         val laeuft = stand(kontingentMinuten = 60, sitzungen = listOf(laufend(seitMinuten = 115)))
-        val vorDemStopp = laeuft.zeitpunkte(Alarmverlauf(true, clock.now() - minuten(3)))
+        val vorDemStopp = laeuft.zeitpunkte(Alarmverlauf(clock.now() - minuten(55), clock.now() - minuten(3)))
         assertEquals(listOf(Ausloeser.ALARM, Ausloeser.AUTOMATISCHER_STOPP), vorDemStopp.liste.map { it.ausloeser })
-        val amStopp = laeuft.zeitpunkte(Alarmverlauf(true, clock.now()))
+        val amStopp = laeuft.zeitpunkte(Alarmverlauf(clock.now() - minuten(55), clock.now()))
         assertEquals(listOf(Ausloeser.AUTOMATISCHER_STOPP), amStopp.liste.map { it.ausloeser }, "Die Wiederholung käme nicht vor dem Stopp")
     }
 

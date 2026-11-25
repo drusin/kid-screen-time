@@ -5,7 +5,7 @@ import io.github.drusin.kidscreentime.domain.bildschirmzeit.Alarmverlauf
 import java.time.Instant
 
 /**
- * What the Alarmkern already did for the running Sitzung (Vorwarnung given, last ring). `domain` has no history, so
+ * What the Alarmkern already did for the running Sitzung (Vorwarnung given for which end of the Kontingent, last ring). `domain` has no history, so
  * the device keeps it here, per Sitzung, and it survives a restart.
  */
 interface AlarmMemory {
@@ -21,7 +21,7 @@ class SharedPreferencesAlarmMemory(context: Context) : AlarmMemory {
     override fun load(sessionId: String): Alarmverlauf {
         if (prefs.getString(KEY_SESSION, null) != sessionId) return Alarmverlauf.KEINER
         return Alarmverlauf(
-            vorwarnungGegeben = prefs.getBoolean(KEY_WARNED, false),
+            vorwarnungFuer = prefs.getLong(KEY_WARNED_FOR, NONE).takeIf { it != NONE }?.let(Instant::ofEpochMilli),
             letzterAlarm = prefs.getLong(KEY_LAST_ALARM, NONE).takeIf { it != NONE }?.let(Instant::ofEpochMilli),
         )
     }
@@ -29,7 +29,7 @@ class SharedPreferencesAlarmMemory(context: Context) : AlarmMemory {
     override fun save(sessionId: String, verlauf: Alarmverlauf) {
         prefs.edit()
             .putString(KEY_SESSION, sessionId)
-            .putBoolean(KEY_WARNED, verlauf.vorwarnungGegeben)
+            .putLong(KEY_WARNED_FOR, verlauf.vorwarnungFuer?.toEpochMilli() ?: NONE)
             .putLong(KEY_LAST_ALARM, verlauf.letzterAlarm?.toEpochMilli() ?: NONE)
             .apply()
     }
@@ -40,7 +40,7 @@ class SharedPreferencesAlarmMemory(context: Context) : AlarmMemory {
 
     private companion object {
         const val KEY_SESSION = "session"
-        const val KEY_WARNED = "warned"
+        const val KEY_WARNED_FOR = "warned_for"
         const val KEY_LAST_ALARM = "last_alarm"
         const val NONE = Long.MIN_VALUE
     }

@@ -83,7 +83,7 @@ class MitternachtAlarmTest {
         assertEquals(emptyList<Ausloeser>(), due, "Nichts auszuführen: Mitternacht plant nur neu")
         assertTrue("silence" in effects.calls, "Das neue Kontingent (Dienstag 60 min) lässt Restzeit: der Alarm verstummt")
         assertTrue("ring" !in effects.calls)
-        assertEquals(server.clock.now() + Duration.ofMinutes(60), planned(), "Der Alarm kommt, wenn das neue Kontingent verbraucht ist")
+        assertEquals(server.clock.now() + Duration.ofMinutes(55), planned(), "Das neue Kontingent bekommt seine eigene Vorwarnung, 5 min vor seinem Ende")
     }
 
     @Test

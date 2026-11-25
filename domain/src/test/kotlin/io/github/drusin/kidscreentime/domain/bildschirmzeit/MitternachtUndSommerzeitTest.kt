@@ -112,7 +112,7 @@ class MitternachtUndSommerzeitTest {
         // Montag 60 min, Sitzung seit 22:00: um 23:30 sind 30 min überzogen, der Alarm klingelt.
         val start = at("2026-01-05T21:00:00Z")
         val kind = stand(montag = 60, dienstag = 60, ueberziehungsgrenze = minuten(120), sitzungen = listOf(Sitzung("s1", start)))
-        val verlauf = Alarmverlauf(vorwarnungGegeben = true, letzterAlarm = montag2330)
+        val verlauf = Alarmverlauf(vorwarnungFuer = montag2330 - minuten(30), letzterAlarm = montag2330)
 
         // Der Alarm klingelt alle 5 min: um 23:35 ist die Wiederholung fällig.
         val klingeln = montag2330 + minuten(5)
@@ -126,13 +126,14 @@ class MitternachtUndSommerzeitTest {
         assertEquals(Zustand.LAEUFT, stand.zustand)
         val neu = kind.faelligeZeitpunkte(nachMitternacht, verlauf)
         assertEquals(mitternacht + minuten(60), neu.von(Ausloeser.ALARM), "der nächste Alarm kommt, wenn das neue Kontingent verbraucht ist")
+        assertEquals(mitternacht + minuten(55), neu.von(Ausloeser.VORWARNUNG), "das neue Kontingent bekommt seine eigene Vorwarnung")
     }
 
     @Test
     fun `Bleibt das neue Tageskontingent bei 0, klingelt der Alarm nach Mitternacht sofort wieder`() {
         val start = at("2026-01-05T21:00:00Z")
         val kind = stand(montag = 60, dienstag = 0, ueberziehungsgrenze = minuten(120), sitzungen = listOf(Sitzung("s1", start)))
-        val verlauf = Alarmverlauf(vorwarnungGegeben = true, letzterAlarm = montag2330)
+        val verlauf = Alarmverlauf(vorwarnungFuer = montag2330 - minuten(30), letzterAlarm = montag2330)
 
         val nachMitternacht = mitternacht + Duration.ofSeconds(1)
 

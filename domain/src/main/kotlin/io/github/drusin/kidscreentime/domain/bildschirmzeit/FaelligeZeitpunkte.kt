@@ -36,8 +36,12 @@ data class FaelligerZeitpunkt(val ausloeser: Ausloeser, val zeitpunkt: Instant)
  * Aufrufer (der Alarmkern merkt sie sich je Sitzung) und gilt nur für diese eine Sitzung.
  */
 data class Alarmverlauf(
-    /** Die Vorwarnung kam in dieser Sitzung schon (sie kommt höchstens einmal pro Sitzung). */
-    val vorwarnungGegeben: Boolean = false,
+    /**
+     * Das Ende des Kontingents (der Zeitpunkt, an dem die Restzeit 0 erreicht), für das die Vorwarnung schon kam, null
+     * wenn sie in dieser Sitzung noch nicht kam. Rückt das Ende später (Bonus, neues Kontingent nach Mitternacht),
+     * kommt sie für das neue Ende wieder. Ein Klingeln des Alarms zählt als Vorwarnung für sein Ende.
+     */
+    val vorwarnungFuer: Instant? = null,
     /** Wann der Alarm zuletzt geklingelt hat. */
     val letzterAlarm: Instant? = null,
 ) {
@@ -66,8 +70,10 @@ data class FaelligeZeitpunkte(val liste: List<FaelligerZeitpunkt>) {
 /**
  * Die nächsten fälligen Zeitpunkte für den Tag von [jetzt]. Nur während einer laufenden Sitzung steht etwas an.
  *
- * - Vorwarnung: wenn die Restzeit die Vorwarnschwelle erreicht, sofort, wenn sie schon darunter (aber > 0) liegt;
- *   nie, wenn [verlauf] sie schon verzeichnet.
+ * - Vorwarnung: wenn die Restzeit die Vorwarnschwelle erreicht, sofort, wenn sie schon darunter (aber > 0) liegt.
+ *   Sie kommt einmal je Ende des Kontingents: nicht, wenn [verlauf] sie für dieses Ende (oder ein späteres) schon
+ *   verzeichnet. Rückt das Ende durch einen Bonus nach hinten, kommt sie wieder [KindStand.vorwarnschwelle] vor dem
+ *   neuen Ende; ein Abzug löst keine zweite aus.
  * - Alarm: wenn die Restzeit 0 erreicht, sofort bei Restzeit 0. Danach alle 5 Minuten nach dem letzten Klingeln.
  * - Automatischer Stopp: wenn die Überziehung die Überziehungsgrenze erreicht (Ende der Sitzung). Alles, was nicht vor
  *   dem Stopp liegt, entfällt. Ist der Stopp schon vorbei, steht er mit seinem tatsächlichen Zeitpunkt (nicht `jetzt`) an.
@@ -84,7 +90,10 @@ fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmve
 
     val liste = mutableListOf<FaelligerZeitpunkt>()
     if (stand.restzeit > Duration.ZERO) {
-        if (!verlauf.vorwarnungGegeben) {
+        val ende = jetzt + stand.restzeit
+        // Enden innerhalb 1 s zählen als gleich: die Restzeit wird bei jedem Neurechnen frisch bestimmt.
+        val schonGewarnt = verlauf.vorwarnungFuer?.let { ende <= it + GLEICHES_ENDE } ?: false
+        if (!schonGewarnt) {
             val bisVorwarnung = (stand.restzeit - vorwarnschwelle).coerceAtLeast(Duration.ZERO)
             liste += FaelligerZeitpunkt(Ausloeser.VORWARNUNG, jetzt + bisVorwarnung)
         }
@@ -103,3 +112,5 @@ fun KindStand.faelligeZeitpunkte(jetzt: Instant, verlauf: Alarmverlauf = Alarmve
     if (stopp > stand.tagesende) liste += FaelligerZeitpunkt(Ausloeser.MITTERNACHT, stand.tagesende)
     return FaelligeZeitpunkte(liste.filter { !it.zeitpunkt.isAfter(stand.tagesende) }.sortedBy { it.zeitpunkt })
 }
+
+private val GLEICHES_ENDE: Duration = Duration.ofSeconds(1)

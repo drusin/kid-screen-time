@@ -80,11 +80,12 @@ class AlarmKern(
         due.forEach { ausloeser ->
             when (ausloeser) {
                 Ausloeser.VORWARNUNG -> {
-                    verlauf = verlauf.copy(vorwarnungGegeben = true)
+                    // Remembered for this end of the Kontingent: a bonus that moves the end later brings a new one.
+                    verlauf = verlauf.copy(vorwarnungFuer = now + kind.tagesstand(now).restzeit)
                     effects.warn()
                 }
                 Ausloeser.ALARM -> {
-                    verlauf = verlauf.copy(vorwarnungGegeben = true, letzterAlarm = now)
+                    verlauf = verlauf.copy(vorwarnungFuer = now, letzterAlarm = now)
                     effects.ring()
                 }
                 // Nothing to carry out: at midnight a new Tageskontingent starts. The plan below calculates again from the

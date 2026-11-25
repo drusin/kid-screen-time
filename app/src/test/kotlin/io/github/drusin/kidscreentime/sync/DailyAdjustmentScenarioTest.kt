@@ -64,7 +64,7 @@ class DailyAdjustmentScenarioTest {
     }
 
     @Test
-    fun `Eine Bonuszeit nach dem Sync lässt einen laufenden Alarm verstummen und plant den Alarm für die neue Restzeit`() = scenario {
+    fun `Eine Bonuszeit nach dem Sync lässt einen laufenden Alarm verstummen und plant die Vorwarnung vor dem neuen Ende`() = scenario {
         val parent = pairParentDevice()
         val start = server.clock.now()
         start()
@@ -79,10 +79,9 @@ class DailyAdjustmentScenarioTest {
         sync()
 
         waitFor("Klingeln endet") { "silence" in effects.calls }
-        // The ring covered the Vorwarnung of this Sitzung (once per Sitzung, `Alarmverlauf`), so the next time is the Alarm at
-        // Restzeit 0 (90 − 61 = 29 min). A Vorwarnung planned here only showed up when a mixed state of snapshot and Outbox
-        // made the Alarmkern forget the Alarmverlauf (see `ChildRepository.local`).
-        waitFor("Alarm bei neuer Restzeit geplant") { planned() == server.clock.now() + Duration.ofMinutes(29) }
+        // The Bonuszeit moved the end of the Kontingent later (90 − 61 = 29 min): the next time is the Vorwarnung for the new
+        // end, 5 min before it (once per end of the Kontingent, `Alarmverlauf.vorwarnungFuer`).
+        waitFor("Vorwarnung vor dem neuen Ende geplant") { planned() == server.clock.now() + Duration.ofMinutes(24) }
         assertEquals(listOf("silence"), effects.calls.distinct(), "Nichts klingelt mehr")
     }
 

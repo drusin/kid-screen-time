@@ -161,7 +161,27 @@ class AlarmKernTest {
         kernOf(this).replan()
 
         assertTrue("silence" in effects.calls, "Restzeit über 0: der Alarm verstummt")
-        assertEquals(server.clock.now() + Duration.ofMinutes(29), planned())
+        assertEquals(server.clock.now() + Duration.ofMinutes(24), planned(), "Neues Ende in 29 min: die Vorwarnung 5 min vorher")
+    }
+
+    @Test
+    fun `Nach einem Bonus kommt die Vorwarnung wieder 5 Minuten vor dem neuen Ende`() = scenario {
+        start()
+        sync()
+        advance(Duration.ofMinutes(55))
+        assertEquals(listOf(Ausloeser.VORWARNUNG), kernOf(this).trigger())
+        effects.calls.clear()
+
+        advance(Duration.ofMinutes(2))
+        serverSql("INSERT INTO daily_adjustments (child_id, day, delta_minutes, booked_at) VALUES ('${child.childId}', '2026-01-05', 10, ${server.clock.now().toEpochMilli()})")
+        sync()
+        kernOf(this).replan()
+        assertEquals(server.clock.now() + Duration.ofMinutes(8), planned(), "Restzeit 13 min: Vorwarnung bei 5 min")
+
+        advance(Duration.ofMinutes(8))
+        assertEquals(listOf(Ausloeser.VORWARNUNG), kernOf(this).trigger())
+        assertEquals(listOf("warn"), effects.calls.filter { it != "silence" })
+        assertEquals(server.clock.now() + Duration.ofMinutes(5), planned(), "Danach nur noch der Alarm")
     }
 
     @Test

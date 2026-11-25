@@ -29,7 +29,7 @@ _Avoid_: Tagesausnahme (ersetzt nichts, sondern verändert)
 
 **Elterngerät**: Ein gekoppeltes Gerät der Eltern. Hier werden Kontingente bearbeitet und der Verlauf angesehen, und hier kommt die Benachrichtigung beim Alarm an. Ein Elterngerät gehört zu allen Kindern der Familie.
 
-**Vorwarnung**: Ein kurzer Ton am Kindgerät, einmal pro Sitzung, wenn die Restzeit eine einstellbare Schwelle erreicht oder schon darunter liegt (Standard: 5 Minuten).
+**Vorwarnung**: Ein kurzer Ton am Kindgerät, wenn die Restzeit eine einstellbare Schwelle erreicht oder schon darunter liegt (Standard: 5 Minuten). Sie kommt einmal je Ende des Kontingents: Rückt das Ende durch einen Bonus (oder ein neues Kontingent nach Mitternacht) nach hinten, kommt sie wieder die Schwelle vor dem neuen Ende; ein Abzug löst keine zweite aus.
 
 **Alarm**: Klingeln am Kindgerät, wenn die Restzeit 0 erreicht. Es wiederholt sich alle 5 Minuten, solange die Sitzung läuft und die Restzeit nicht wieder über 0 steigt. Gesperrt wird nichts. Die Eltern bekommen zusätzlich eine Benachrichtigung.
 
