@@ -1,6 +1,6 @@
 # Betrieb im Homelab
 
-Der Server läuft als Compose-Stack (Server + ntfy) hinter dem vorhandenen Traefik. Die Beispieldateien liegen in `deploy/compose/`; sie sind auf das Homelab `*.rusin.xyz` zugeschnitten (Domain, Datenpfad, Entrypoint `websecure`, Zertifikatsresolver `letsencrypt` bei Bedarf anpassen).
+Der Server läuft als Compose-Stack (Server + ntfy) hinter dem vorhandenen Traefik. Die Beispieldateien liegen in `deploy/compose/`; sie sind auf das Homelab `*.rusin.xyz` zugeschnitten (Domain, Datenpfad, Entrypoint `websecure` bei Bedarf anpassen). TLS kommt zentral vom Entrypoint des Traefik; die Router setzen keinen eigenen `certresolver` (ein unbekannter Resolver führt still zum Traefik-Standardzertifikat).
 
 | Datei | Inhalt |
 | --- | --- |

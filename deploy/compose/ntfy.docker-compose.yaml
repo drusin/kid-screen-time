@@ -17,9 +17,8 @@ services:
       - traefik.enable=true
       - traefik.docker.network=proxy
       # Von außen nur lesen (Abonnieren per JSON-Stream/WebSocket). Publishen läuft intern über http://ntfy:80.
-      # Entrypoint und Zertifikat an das eigene Traefik anpassen (hier: websecure, letsencrypt).
+      # Entrypoint an das eigene Traefik anpassen (hier: websecure). TLS und Zertifikat kommen zentral vom Entrypoint, deshalb kein eigener certresolver.
       - traefik.http.routers.ntfy.rule=Host(`ntfy.rusin.xyz`) && (Method(`GET`) || Method(`HEAD`) || Method(`OPTIONS`))
       - traefik.http.routers.ntfy.entrypoints=websecure
-      - traefik.http.routers.ntfy.tls.certresolver=letsencrypt
       - traefik.http.routers.ntfy.service=ntfy
       - traefik.http.services.ntfy.loadbalancer.server.port=80

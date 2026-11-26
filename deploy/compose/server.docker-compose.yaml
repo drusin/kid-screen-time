@@ -28,9 +28,8 @@ services:
       - traefik.enable=true
       - traefik.docker.network=proxy
       # Nur der öffentliche Port 8080; der Admin-Port 8081 bekommt keine Route.
-      # Entrypoint und Zertifikat an das eigene Traefik anpassen (hier: websecure, letsencrypt).
+      # Entrypoint an das eigene Traefik anpassen (hier: websecure). TLS und Zertifikat kommen zentral vom Entrypoint, deshalb kein eigener certresolver.
       - traefik.http.routers.kidscreentime.rule=Host(`kidscreentime.rusin.xyz`)
       - traefik.http.routers.kidscreentime.entrypoints=websecure
-      - traefik.http.routers.kidscreentime.tls.certresolver=letsencrypt
       - traefik.http.routers.kidscreentime.service=kidscreentime
       - traefik.http.services.kidscreentime.loadbalancer.server.port=8080
