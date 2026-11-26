@@ -122,5 +122,5 @@ class AlarmKern(
     }
 
     private fun kindStand(local: ChildLocalState?): KindStand? =
-        testSession.stand(wallClock.now()) ?: local?.stored?.snapshot?.toKindStand(local.pending)
+        testSession.stand(wallClock.now()) ?: local?.toKindStand()
 }

@@ -5,6 +5,7 @@ import io.github.drusin.kidscreentime.api.ChildSnapshot
 import io.github.drusin.kidscreentime.api.DeviceRole
 import io.github.drusin.kidscreentime.child.ChildSyncResult
 import io.github.drusin.kidscreentime.db.OutboxSessionEntity
+import io.github.drusin.kidscreentime.domain.clock.WallClock
 import io.github.drusin.kidscreentime.server.TestServer
 import io.github.drusin.kidscreentime.ui.TestContainer
 import io.ktor.client.HttpClient
@@ -127,8 +128,11 @@ class SyncScenario(
     /** The Kindgerät most recently created by [device] / [pairChildDevice]. */
     val child: Device get() = devices.last()
 
-    /** Creates another device of the app on the same server and clock (not paired yet). */
-    fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null): Device {
+    /**
+     * Creates another device of the app on the same server and clock (not paired yet). [behindServer] lets its wall clock
+     * run that much behind the server's (the clocks of tablet and server never agree exactly); the monotonic clock is unaffected.
+     */
+    fun device(alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null, behindServer: Duration = Duration.ZERO): Device {
         lateinit var self: Device
         val engine = MockEngine { request ->
             requests += "${request.method.value} ${request.url.encodedPath}"
@@ -145,12 +149,18 @@ class SyncScenario(
             }
             respond(answer.readRawBytes(), answer.status, headersOf(HttpHeaders.ContentType, answer.headers[HttpHeaders.ContentType] ?: "application/json"))
         }
-        return Device(TestContainer(clock = server.clock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { self = it; devices += it; allDevices += it }
+        val wallClock = WallClock { server.clock.now() - behindServer }
+        return Device(TestContainer(clock = server.clock, wallClock = wallClock, engine = engine, alarmEffects = alarmEffects, syncRetry = syncRetry)).also { self = it; devices += it; allDevices += it }
     }
 
     /** Creates a device and pairs it as the Kindgerät of a new Kind "Mia" (or of [childId] when given). */
-    suspend fun pairChildDevice(childId: String? = null, alarmEffects: AlarmEffects = AlarmEffects.NONE, syncRetry: SyncRetry? = null): Device {
-        val device = device(alarmEffects, syncRetry)
+    suspend fun pairChildDevice(
+        childId: String? = null,
+        alarmEffects: AlarmEffects = AlarmEffects.NONE,
+        syncRetry: SyncRetry? = null,
+        behindServer: Duration = Duration.ZERO,
+    ): Device {
+        val device = device(alarmEffects, syncRetry, behindServer)
         val code = if (childId == null) server.services.pairing.createCode(DeviceRole.CHILD, newChildName = "Mia")
         else server.services.pairing.createCode(DeviceRole.CHILD, childId = childId)
         device.app.container.pairingRepository.pair(TestServer.PUBLIC, code.code, "Tablet")

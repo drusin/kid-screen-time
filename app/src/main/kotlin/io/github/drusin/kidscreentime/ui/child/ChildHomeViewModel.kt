@@ -150,7 +150,7 @@ class ChildHomeViewModel(
 }
 
 private fun ChildLocalState.stand(wallClock: WallClock): Tagesstand =
-    stored.snapshot.toKindStand(pending).tagesstand(wallClock.now())
+    toKindStand().tagesstand(wallClock.now())
 
 private fun actionFor(stand: Tagesstand): ChildAction = when {
     stand.laufendeSitzung != null -> ChildAction.STOP

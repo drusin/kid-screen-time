@@ -35,7 +35,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 /** The last Kind-Snapshot from Room and when this device received it (device wall time). */
-data class StoredChildSnapshot(val snapshot: ChildSnapshot, val receivedAtEpochMillis: Long)
+data class StoredChildSnapshot(val snapshot: ChildSnapshot, val receivedAtEpochMillis: Long) {
+    /**
+     * How far the device's clock is from the server's, as of this snapshot: add it to a server time to get device time.
+     * The server's "now" of the answer becomes the moment it arrived here, so no server time lands in the device's future
+     * (a Sitzung started here would otherwise look not yet started after the sync). The network delay stays in it, a
+     * few hundred milliseconds at most; it is measured again with every sync.
+     */
+    val serverToDevice: Duration get() = Duration.ofMillis(receivedAtEpochMillis - snapshot.serverTimeEpochMillis)
+}
 
 /** A Sitzung of the Outbox: started or stopped at this device, not yet confirmed by the server. */
 data class PendingSession(val id: String, val startWallMillis: Long, val endWallMillis: Long? = null)
@@ -121,7 +129,7 @@ class ChildRepository(
         database.withTransaction {
             val row = outboxDao.find(sessionId) ?: run {
                 // Known only from the snapshot (started at an earlier time): the Stopp brings its Start with it.
-                val start = snapshotSession(sessionId)?.startEpochMillis ?: return@withTransaction
+                val start = snapshotStartInDeviceTime(sessionId) ?: return@withTransaction
                 OutboxSessionEntity(sessionId, monotonicStartFor(start), start)
             }
             if (row.endWallMillis != null) return@withTransaction
@@ -143,9 +151,12 @@ class ChildRepository(
     private fun monotonicStartFor(startWallMillis: Long): Long =
         monotonicClock.elapsed().toMillis() - (wallClock.now().toEpochMilli() - startWallMillis).coerceAtLeast(0)
 
-    private suspend fun snapshotSession(sessionId: String) = snapshotDao.current()
-        ?.let { runCatching { json.decodeFromString<ChildSnapshot>(it.json) }.getOrNull() }
-        ?.todaySessions?.firstOrNull { it.id == sessionId }
+    /** The start of a Sitzung known only from the snapshot, moved onto this device's clock like everything the screen shows. */
+    private suspend fun snapshotStartInDeviceTime(sessionId: String): Long? {
+        val stored = snapshotDao.current()?.let(::decode) ?: return null
+        val session = stored.snapshot.todaySessions.firstOrNull { it.id == sessionId } ?: return null
+        return session.startEpochMillis + stored.serverToDevice.toMillis()
+    }
 
     /**
      * Sends the Outbox (all open Sitzungen in start order, times as age by the monotonic clock) and stores the

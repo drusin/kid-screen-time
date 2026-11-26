@@ -7,6 +7,7 @@ import io.github.drusin.kidscreentime.AppContainer
 import io.github.drusin.kidscreentime.alarm.AlarmEffects
 import io.github.drusin.kidscreentime.db.AppDatabase
 import io.github.drusin.kidscreentime.domain.clock.ManualClock
+import io.github.drusin.kidscreentime.domain.clock.WallClock
 import io.github.drusin.kidscreentime.pairing.FakeTokenStore
 import io.github.drusin.kidscreentime.sync.SyncRetry
 import io.ktor.client.engine.HttpClientEngine
@@ -35,6 +36,8 @@ import kotlinx.coroutines.withTimeout
 class TestContainer(
     /** Wall and monotonic clock of the container. Advance it, never wait. A sync scenario shares the server's clock. */
     val clock: ManualClock = ManualClock(),
+    /** The device's wall clock; defaults to [clock]. A sync scenario passes one that runs behind the server's (clock skew). */
+    wallClock: WallClock = clock,
     /** Replaces the MockEngine, e.g. by an engine that forwards to the real server (see `SyncScenario`). */
     engine: HttpClientEngine? = null,
     /** Replaces sound and full screen of the alarm, e.g. by `RecordingAlarmEffects`. */
@@ -66,7 +69,7 @@ class TestContainer(
         context = context,
         tokenStore = FakeTokenStore(),
         engine = engine ?: MockEngine { request -> requests += request; handler(request) },
-        wallClock = clock,
+        wallClock = wallClock,
         monotonicClock = clock,
         database = database,
         alarmEffects = alarmEffects,
